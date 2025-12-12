@@ -1,7 +1,9 @@
+use crate::errors::ConnectionError;
 use http::StatusCode;
-use reqwest::blocking::{Client, Response};
+use reqwest::{Client, Response};
 use std::collections::HashMap;
 use thiserror::Error;
+use tokio::net::TcpStream;
 use url::{ParseError, Url};
 
 #[derive(Error, Debug)]
@@ -31,14 +33,16 @@ impl TryFrom<&str> for VendoSocket {
 }
 
 impl VendoSocket {
-    pub fn request<'a, I>(&self, params: I) -> Result<String, VendoError>
+    pub async fn request<I>(&self, params: I) -> Result<String, VendoError>
     where
-        I: IntoIterator<Item = (&'a str, &'a str)>,
+        I: IntoIterator<Item = (String, String)>,
     {
-        let url = reqwest::Url::parse_with_params(self.url.as_str(), params)?;
-        let resp: Response = self.client.get(url).send()?;
+        let param2 = HashMap::from([("from", "8011102"), ("to", "8000105")]);
+
+        let url = reqwest::Url::parse_with_params(self.url.as_str(), param2.iter())?;
+        let resp = self.client.get(url).send().await?;
         if resp.status().is_success() {
-            Ok(resp.text()?)
+            Ok(resp.text().await?)
         } else {
             Err(VendoError::HttpStatusError {
                 status: resp.status(),
@@ -52,29 +56,32 @@ mod tests {
     use super::*;
     use std::iter;
 
-    #[test]
-    fn test_without_params() -> Result<(), VendoError> {
+    #[tokio::test]
+    async fn test_without_params() -> Result<(), VendoError> {
         let socket = VendoSocket::try_from("https://httpbin.org/")?;
-        let params: iter::Empty<(&str, &str)> = iter::empty();
-        socket.request(params)?;
+        let params: iter::Empty<(String, String)> = iter::empty();
+        socket.request(params).await?;
         Ok(())
     }
 
-    #[test]
-    fn test_with_params() -> Result<(), VendoError> {
+    #[tokio::test]
+    async fn test_with_params() -> Result<(), VendoError> {
         let socket = VendoSocket::try_from("https://v6.db.transport.rest/journeys")?;
         let frankfurt_ibnr = "8000105";
         let berlin_ibnr = "8011102";
-        let params = HashMap::from([("from", frankfurt_ibnr), ("to", berlin_ibnr)]);
-        socket.request(params.into_iter())?;
+        let params = HashMap::from([
+            ("from".to_string(), frankfurt_ibnr.to_string()),
+            ("to".to_string(), berlin_ibnr.to_string()),
+        ]);
+        socket.request(params.into_iter()).await?;
         Ok(())
     }
 
-    #[test]
-    fn test_bad_status() -> Result<(), VendoError> {
+    #[tokio::test]
+    async fn test_bad_status() -> Result<(), VendoError> {
         let socket = VendoSocket::try_from("https://v6.db.transport.rest/journeys")?;
-        let params = HashMap::from([("X", "Y")]);
-        socket.request(params.into_iter())?;
+        let params = HashMap::from([("X".to_string(), "Y".to_string())]);
+        socket.request(params.into_iter()).await?;
         Ok(())
     }
 }
