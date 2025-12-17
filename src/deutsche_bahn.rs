@@ -1,6 +1,6 @@
 //! Defines structures to represent train trips accordingly
 
-use crate::journey::Journey;
+//use crate::journey::Journey;
 use crate::stations::Station;
 use chrono::{DateTime, Local, TimeDelta};
 use mongodb::bson::oid::ObjectId;
@@ -59,7 +59,7 @@ pub struct BahnProfile<'a> {
     destination: &'a Station,
     mongo_id: Option<ObjectId>,
     age: u8,
-    computed_journeys: HashSet<Journey<'a>>,
+    //computed_journeys: HashSet<Journey<'a>>,
     tickets: bool,
     results: u8,
     first_class: bool,
@@ -88,7 +88,7 @@ impl<'a> BahnProfile<'a> {
             loyalty_card: loyalty_card.unwrap_or(LoyaltyCard::None),
             endpoint: endpoint.unwrap_or("dbnav"),
             mongo_id: None,
-            computed_journeys: HashSet::new(),
+            //computed_journeys: HashSet::new(),
         }
     }
 

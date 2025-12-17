@@ -139,7 +139,6 @@ mod tests {
                 println!("found match");
                 Ok(())
             }
-            // TODO duplicate entries are cause non-detection
             None => Err(ConnectionError::InvalidStation {
                 name: a.to_string(),
             }),

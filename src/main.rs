@@ -2,7 +2,7 @@
 
 use crate::{
     deutsche_bahn::{BahnProfile, LoyaltyCard},
-    journey::Journey,
+    journey::JourneyData,
     mongo::MongoClient,
     stations::Stations,
     vendo_socket::VendoSocket,
@@ -50,8 +50,8 @@ async fn main() -> Result<(), errors::ConnectionError> {
     let result = vendo_socket.request(params.into_iter()).await?;
 
     // TODO Deserialization into Journey (besides Legs) or deserialization function
-    //let journey: Journey = serde_json::from_str(&result)?;
-    println!("{result}");
+    let journey: JourneyData = serde_json::from_str(&result)?;
+    println!("{journey:?}");
 
     Ok(())
 }

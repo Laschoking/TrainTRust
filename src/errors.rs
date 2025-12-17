@@ -29,4 +29,7 @@ pub enum ConnectionError {
     /// Error if a station name has local accents that were not replaced
     #[error("Encountered invalid unicode character")]
     InvalidCharacter,
+    /// Error due to invalid deserialization with serde
+    #[error(transparent)]
+    SerdeDeserializationError(#[from] serde_json::Error),
 }
