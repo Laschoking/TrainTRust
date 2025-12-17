@@ -1,42 +1,26 @@
-//! A trip between two locations with price growth.
-
-use crate::errors::ConnectionError;
-use crate::stations::Station;
-use chrono::{DateTime, Local, TimeDelta, Utc};
+//! Deserialize a GET response from the Vendo endpoint
+use crate::domain::journeys::Leg;
+use chrono::{DateTime, FixedOffset, Local, TimeDelta, Utc};
 use futures::stream::{StreamExt, TryStreamExt};
 use mongodb::{
     Client, Collection, Database,
     bson::{doc, oid::ObjectId},
     options::FindOptions,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_aux::prelude::*;
-use thiserror::Error;
-
-//pub struct Journey <'a> {
-//    origin: &'a Station,
-//    destination: &'a Station,
-//    departure: DateTime<Local>,
-//    arrival: DateTime<Local>,
-//    Legs<
-//    travelling_time: TimeDelta,
-//    last_updated: DateTime<Local>,
-//}
-//
-//impl From<JourneyData> for Journey {
-//    fn from(value: JourneyData) -> Self {}
-//}
+use std::collections::HashMap;
 
 #[derive(Deserialize, Debug)]
 /// One entire trip between two [Station] that may be direct or require change
-pub struct JourneyData {
-    journeys: Vec<RawJourney>,
+pub struct JourneyRequest {
+    journeys: Vec<JsonJourney>,
 }
 
 #[derive(Deserialize, Debug)]
-pub struct RawJourney {
+pub struct JsonJourney {
     price: Price,
-    legs: Vec<Leg>,
+    legs: Vec<JsonLeg>,
     #[serde(rename = "refreshToken")]
     refresh_token: String,
     tickets: Option<Vec<Ticket>>,
@@ -44,35 +28,42 @@ pub struct RawJourney {
 
 #[derive(Deserialize, Debug)]
 /// One direct train hop between two [Station]s
-pub struct Leg {
-    // TODO: it would be convenient to make origin and destination Stations
-    // But this would mean that we make a lot of look-ups, and if the IBNR is not found
-    // we will run into errors quickly
-    // Maybe the Server response contains the IBNR?
-    // Also it would be nice if Stations can stay immutable
-    origin: Origin,
-    destination: Destination,
-    departure: DateTime<Utc>,
-    arrival: DateTime<Utc>,
-    line: Option<Line>,
+pub(crate) struct JsonLeg {
+    pub(crate) origin: Origin,
+    pub(crate) destination: Destination,
+    pub(crate) departure: DateTime<FixedOffset>,
+    pub(crate) arrival: DateTime<FixedOffset>,
+    pub(crate) line: Option<Line>,
+}
+
+impl From<JsonLeg> for Leg {
+    fn from(leg: JsonLeg) -> Self {
+        Self {
+            origin: leg.origin.ibnr,
+            destination: leg.destination.ibnr,
+            departure: leg.departure,
+            arrival: leg.arrival,
+            line: leg.line.map(|line| line.name),
+        }
+    }
 }
 
 #[derive(Deserialize, Debug)]
-pub struct Origin {
+pub(crate) struct Origin {
     #[serde(rename = "id", deserialize_with = "deserialize_number_from_string")]
-    ibnr: u32,
+    pub(crate) ibnr: u32,
 }
 
 #[derive(Deserialize, Debug)]
-pub struct Destination {
+pub(crate) struct Destination {
     #[serde(rename = "id", deserialize_with = "deserialize_number_from_string")]
-    ibnr: u32,
+    pub(crate) ibnr: u32,
 }
 
 #[derive(Deserialize, Debug)]
-pub struct Line {
+pub(crate) struct Line {
     #[serde(rename = "id")]
-    name: String,
+    pub(crate) name: String,
 }
 
 #[derive(Deserialize, Debug)]
@@ -94,7 +85,6 @@ pub struct PriceObj {
 }
 
 #[cfg(test)]
-
 mod tests {
     use super::*;
     use std::fs::File;
@@ -104,7 +94,7 @@ mod tests {
     fn parse_json() -> Result<(), serde_json::Error> {
         let file = File::open("data/test_journey.json").unwrap();
         let reader = BufReader::new(file);
-        let journey: JourneyData = serde_json::from_reader(reader)?;
+        let _journey: JourneyRequest = serde_json::from_reader(reader)?;
         Ok(())
     }
 }

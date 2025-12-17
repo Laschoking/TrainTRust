@@ -2,7 +2,7 @@
 use thiserror::Error;
 use tokio::task::JoinError;
 
-use crate::vendo_socket::VendoError;
+use crate::vendo::client::VendoError;
 
 #[derive(Error, Debug)]
 pub enum ConnectionError {

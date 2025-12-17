@@ -1,7 +1,7 @@
 //! Client configuration to request and update trips and to sync with database.
 
 use crate::{
-    deutsche_bahn::{BahnProfile, LoyaltyCard},
+    domain::deutsche_bahn::{BahnProfile, LoyaltyCard},
     journey::JourneyData,
     mongo::MongoClient,
     stations::Stations,
@@ -11,12 +11,10 @@ use chrono::{NaiveDate, NaiveDateTime};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-mod deutsche_bahn;
+mod domain;
 mod errors;
-mod journey;
 mod mongo;
-mod stations;
-mod vendo_socket;
+mod vendo;
 
 #[tokio::main]
 async fn main() -> Result<(), errors::ConnectionError> {

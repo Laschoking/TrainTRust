@@ -1,6 +1,7 @@
 //! Match stations in MongoDB to trip stations
 
 use crate::errors::ConnectionError;
+use crate::mongo::station::Station;
 use futures::stream::{StreamExt, TryStreamExt};
 use fuzzy_match::fuzzy_match;
 use mongodb::{
@@ -11,36 +12,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use unidecode::unidecode;
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-/// A train station from Wikidata
-pub struct Station {
-    #[serde(rename = "_id")]
-    id: ObjectId,
-    #[serde(rename = "Name")]
-    name: String,
-    #[serde(rename = "IBNR")]
-    ibnr: u32,
-}
-impl Hash for Station {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.name.hash(state);
-    }
-}
-
-impl PartialEq for Station {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name
-    }
-}
-
-impl Eq for Station {}
-
-impl Station {
-    pub fn ibnr(&self) -> u32 {
-        self.ibnr
-    }
-}
 
 pub struct Stations {
     // We use HashSet to avoid duplicate Station names (hence the implemenation of PartialEq & Hash)
@@ -101,25 +72,6 @@ mod tests {
     use crate::errors::ConnectionError;
     use fuzzy_match::fuzzy_match;
 
-    #[test]
-    fn remove_duplicates() {
-        let station1 = Station {
-            id: ObjectId::new(),
-            name: "foo".to_string(),
-            ibnr: 1,
-        };
-        let station2 = Station {
-            id: ObjectId::new(),
-            name: "foo".to_string(),
-            ibnr: 2,
-        };
-        assert_eq!(station1, station2);
-        let mut foo = HashSet::new();
-        foo.insert(station1);
-        foo.insert(station2);
-        assert_eq!(foo.len(), 1);
-    }
-
     #[tokio::test]
     async fn station_matching() -> Result<(), ConnectionError> {
         let uri = "mongodb://root:example@localhost:27017/?authSource=admin";
@@ -131,7 +83,7 @@ mod tests {
     }
 
     #[test]
-    fn bad_station() -> Result<(), ConnectionError> {
+    fn duplicate_station_matching() -> Result<(), ConnectionError> {
         let a = "Berlin Central Station";
         let b = vec![("Berlin Central Station", 0), ("Berlin Central Station", 1)];
         match fuzzy_match(a, b) {
@@ -146,7 +98,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn no_unicode_stations() -> Result<(), ConnectionError> {
+    async fn unicode_station_name() -> Result<(), ConnectionError> {
         let uri = "mongodb://root:example@localhost:27017/?authSource=admin";
         let mongo = MongoClient::try_connect(uri).await?;
         let station_client = Stations::try_connect(mongo.database()).await?;

@@ -1,7 +1,7 @@
-//! Defines structures to represent train trips accordingly
+//! Profiles for Deutsche Bahn to collect parameters for Http GET request
 
 //use crate::journey::Journey;
-use crate::stations::Station;
+use crate::mongo::station::Station;
 use chrono::{DateTime, Local, TimeDelta};
 use mongodb::bson::oid::ObjectId;
 use std::collections::{HashMap, HashSet};
@@ -92,7 +92,8 @@ impl<'a> BahnProfile<'a> {
         }
     }
 
-    pub fn request_parameter(&self, date: DateTime<Local>) -> HashMap<String, String> {
+    // TODO this should, if so return all parameters, the selection should happen in the vendo client only
+    pub fn as_hashmap(&self, date: DateTime<Local>) -> HashMap<String, String> {
         HashMap::from([
             (String::from("from"), self.origin.ibnr().to_string()),
             (String::from("to"), self.destination.ibnr().to_string()),
