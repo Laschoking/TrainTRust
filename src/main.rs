@@ -2,11 +2,13 @@
 
 use crate::{
     deutsche_bahn::{BahnProfile, LoyaltyCard},
+    journey::Journey,
     mongo::MongoClient,
     stations::Stations,
     vendo_socket::VendoSocket,
 };
 use chrono::{NaiveDate, NaiveDateTime};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 mod deutsche_bahn;
@@ -26,7 +28,7 @@ async fn main() -> Result<(), errors::ConnectionError> {
 
     let stations = Stations::try_connect(mongo.database()).await?;
 
-    let origin = stations.try_get("Frankfurt Main").await?;
+    let origin = stations.try_get("Frankfurt (Main) Hbf").await?;
     let destination = stations.try_get("Berlin Central Station").await?;
 
     let profile = BahnProfile::new_with_options(
@@ -46,6 +48,9 @@ async fn main() -> Result<(), errors::ConnectionError> {
     let date = chrono::Local::now();
     let params: HashMap<String, String> = profile.request_parameter(date);
     let result = vendo_socket.request(params.into_iter()).await?;
+
+    // TODO Deserialization into Journey (besides Legs) or deserialization function
+    //let journey: Journey = serde_json::from_str(&result)?;
     println!("{result}");
 
     Ok(())

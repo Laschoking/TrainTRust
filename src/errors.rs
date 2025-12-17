@@ -26,4 +26,7 @@ pub enum ConnectionError {
     /// Error due to invalid uri while parsing
     #[error(transparent)]
     UrlParseError(#[from] url::ParseError),
+    /// Error if a station name has local accents that were not replaced
+    #[error("Encountered invalid unicode character")]
+    InvalidCharacter,
 }

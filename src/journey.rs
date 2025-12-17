@@ -12,6 +12,7 @@ use mongodb::{
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+//#[derive(Serialize, Deserialize)]
 /// One entire trip between two [Station] that may be direct or require change
 pub struct Journey<'a> {
     origin: &'a Station,
