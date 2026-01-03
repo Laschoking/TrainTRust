@@ -115,7 +115,9 @@ impl Display for LoyaltyCard {
 /// Information for an API request to the Vendo endpoint
 #[derive(Deserialize, Serialize)]
 pub struct BahnProfile {
-    user: String,
+    #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
+    pub id: Option<ObjectId>,
+    name: String,
     age: u8,
     tickets: bool,
     results: u8,
@@ -126,7 +128,7 @@ pub struct BahnProfile {
 
 impl BahnProfile {
     pub fn new_with_options(
-        user: String,
+        name: String,
         age: Option<u8>,
         tickets: Option<bool>,
         results: Option<u8>,
@@ -136,7 +138,8 @@ impl BahnProfile {
     ) -> Result<BahnProfile, ConnectionError> {
         let loyalty_card = LoyaltyCard::from_str(loyalty_card.unwrap_or("None"))?;
         Ok(Self {
-            user,
+            id: None, // Expect no mongo id for new profile
+            name,
             age: age.unwrap_or(30),
             tickets: tickets.unwrap_or(true),
             results: results.unwrap_or(10),
@@ -145,10 +148,17 @@ impl BahnProfile {
             endpoint: endpoint.unwrap_or(String::from("dbnav")),
         })
     }
+    pub fn id(&self) -> &Option<ObjectId> {
+        &self.id
+    }
+
+    pub fn name(&self) -> &String {
+        &self.name
+    }
 
     pub fn as_hashmap(&self) -> HashMap<String, String> {
         HashMap::from([
-            (String::from("user"), self.user.to_string()),
+            (String::from("name"), self.name.to_string()),
             (String::from("age"), self.age.to_string()),
             (String::from("tickets"), self.tickets.to_string()),
             (String::from("results"), self.results.to_string()),
@@ -156,5 +166,33 @@ impl BahnProfile {
             (String::from("loyaltyCard"), self.loyalty_card.to_string()),
             (String::from("profile"), self.endpoint.to_string()),
         ])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{config::MONGO_CONNECTION_STRING, mongo::client::MongoClient};
+
+    #[tokio::test]
+    async fn insert_user() -> Result<(), ConnectionError> {
+        let client = MongoClient::try_connect(MONGO_CONNECTION_STRING).await?;
+
+        let mut user = BahnProfile::new_with_options(
+            String::from("Karla"),
+            Some(27),
+            Some(true),
+            None,
+            Some(false),
+            Some("bahncard-2nd-25"),
+            None,
+        )?;
+        let m = client.add_user(&mut user).await?;
+        assert!(m.id.is_some());
+        println!("inserted user {} with id {:?}", m.name, m.id);
+        // Remove user from DB at the end
+        client.drop_user(m.id.expect("id is not None")).await?;
+
+        Ok(())
     }
 }

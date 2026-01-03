@@ -2,7 +2,7 @@
 use thiserror::Error;
 use tokio::task::JoinError;
 
-use crate::vendo::client::VendoError;
+use crate::{mongo::deutsche_bahn::LoyaltyCard, vendo::client::VendoError};
 
 #[derive(Error, Debug)]
 pub enum ConnectionError {
@@ -32,4 +32,7 @@ pub enum ConnectionError {
     /// Error due to invalid deserialization with serde
     #[error(transparent)]
     SerdeDeserializationError(#[from] serde_json::Error),
+    /// Error when an invalid string was given as Bahncard
+    #[error("Invalid Bahncard  specified:`{0:?}` options are `{1:?}`")]
+    InvalidBahnCard(String, String),
 }

@@ -1,5 +1,7 @@
 //! Match stations in MongoDB to trip stations
 
+/// Stations come from a MongoDB collection, so their implementation should be located under mongo/
+/// It is questionable, if the fuzzy matching should be here though, since its rather algorithmic and not IO
 use crate::errors::ConnectionError;
 use futures::stream::{StreamExt, TryStreamExt};
 use fuzzy_match::fuzzy_match;
@@ -7,10 +9,48 @@ use mongodb::{
     Database,
     bson::{doc, oid::ObjectId},
 };
+use unidecode::unidecode;
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
-use unidecode::unidecode;
+use std::ops::Deref;
+
+/// Contains all long distaince train stations from Wikidata
+pub struct Stations(pub(super) HashSet<Station>);
+
+/// Dereference into [HashSet<Station>]
+impl Deref for Stations {
+    type Target = HashSet<Station>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Stations {
+    pub fn try_get(&self, name: &str) -> Result<&Station, ConnectionError> {
+        let deunicode = unidecode(name);
+        match fuzzy_match(
+            &deunicode,
+            self.iter()
+                .map(|station| (station.name.as_str(), station.ibnr)),
+        ) {
+            Some(ibnr) => {
+                let station = self.iter().find(|station| station.ibnr == ibnr).unwrap();
+                println!(
+                    "Fuzzy matching successfull: match `{name:}` with `{}`",
+                    station.name
+                );
+
+                Ok(station)
+            }
+            None => Err(ConnectionError::InvalidStation {
+                name: name.to_string(),
+            }),
+        }
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 /// A train station from Wikidata
@@ -18,10 +58,11 @@ pub struct Station {
     #[serde(rename = "_id")]
     id: ObjectId,
     #[serde(rename = "Name")]
-    name: String,
+    pub(crate) name: String,
     #[serde(rename = "IBNR")]
     ibnr: u32,
 }
+
 impl Hash for Station {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.name.hash(state);
@@ -44,10 +85,9 @@ impl Station {
 
 #[cfg(test)]
 mod tests {
-    use std::hash::Hash;
-
+    use super::super::client::MongoClient;
     use super::*;
-    use crate::MongoClient;
+    use crate::config::MONGO_CONNECTION_STRING;
     use crate::errors::ConnectionError;
     use fuzzy_match::fuzzy_match;
 
@@ -72,20 +112,19 @@ mod tests {
 
     #[tokio::test]
     async fn station_matching() -> Result<(), ConnectionError> {
-        let uri = "mongodb://root:example@localhost:27017/?authSource=admin";
-        let mongo = MongoClient::try_connect(uri).await?;
-        let station_client = Stations::try_connect(mongo.database()).await?;
-        let station = station_client.try_get("Berlin Central Station").await?;
+        let mongo: MongoClient = MongoClient::try_connect(MONGO_CONNECTION_STRING).await?;
+        let stations = mongo.load_stations().await?;
+        let station = stations.try_get("Berlin Central Station")?;
         println!("{station:?}");
         Ok(())
     }
 
     #[test]
-    fn bad_station() -> Result<(), ConnectionError> {
+    fn duplicate_station_matching() -> Result<(), ConnectionError> {
         let a = "Berlin Central Station";
         let b = vec![("Berlin Central Station", 0), ("Berlin Central Station", 1)];
         match fuzzy_match(a, b) {
-            Some(t) => {
+            Some(_) => {
                 println!("found match");
                 Ok(())
             }
@@ -96,12 +135,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn no_unicode_stations() -> Result<(), ConnectionError> {
-        let uri = "mongodb://root:example@localhost:27017/?authSource=admin";
-        let mongo = MongoClient::try_connect(uri).await?;
-        let station_client = Stations::try_connect(mongo.database()).await?;
+    async fn unicode_station_name() -> Result<(), ConnectionError> {
+        let mongo: MongoClient = MongoClient::try_connect(MONGO_CONNECTION_STRING).await?;
+        let stations = mongo.load_stations().await?;
         let mut flag = false;
-        for station in station_client.stations {
+        for station in stations.iter() {
             if station.name.len() != station.name.chars().count() {
                 flag = true;
                 println!(

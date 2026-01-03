@@ -1,16 +1,7 @@
 //! Client configuration to request and update trips and to sync with database.
 
-use crate::{
-    domain::deutsche_bahn::{BahnProfile, LoyaltyCard},
-    journey::JourneyData,
-    mongo::MongoClient,
-    stations::Stations,
-    vendo_socket::VendoSocket,
-};
-use chrono::{NaiveDate, NaiveDateTime};
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-
+use crate::{domain::controller::Controller, mongo::deutsche_bahn::BahnProfile};
+mod config;
 mod domain;
 mod errors;
 mod mongo;
@@ -18,39 +9,54 @@ mod vendo;
 
 #[tokio::main]
 async fn main() -> Result<(), errors::ConnectionError> {
-    let mongo_con = "mongodb://root:example@localhost:27017/?authSource=admin";
-    let mongo = MongoClient::try_connect(mongo_con).await?;
+    // Main should do:: initiate clients
+    // First: connect to MongoDB & update price information
+    // Second: make new price requests for new journeys
+    // Potentially take command line arguments (from, to, date)
 
-    let vendo_uri = "https://v6.db.transport.rest/journeys";
-    let vendo_socket = VendoSocket::try_from(vendo_uri)?;
+    let controller = Controller::try_new().await?;
+    //controller.load_data().await?;
 
-    let stations = Stations::try_connect(mongo.database()).await?;
+    // main.rs accept user input, organize chrono runs
 
-    let origin = stations.try_get("Frankfurt (Main) Hbf").await?;
-    let destination = stations.try_get("Berlin Central Station").await?;
+    // Connect to MongoDB
+    // Load existing trips
 
-    let profile = BahnProfile::new_with_options(
-        origin,
-        destination,
-        None,
-        None,
-        None,
-        None,
-        Some(LoyaltyCard::C2BC25),
-        None,
-    );
+    // Give trips to domain client for processing
+    // domain: find trips to update & add new trip requests
 
-    //let dt: NaiveDateTime =
-    //  NaiveDate::from_ymd_opt(2016, 7, 8).unwrap().and_hms_opt(9, 10, 11).unwrap()
-    //.with_ymd_and_hms(2025, 12, 17, 06, 0, 0)
+    controller.update_trips().await?;
+    // Vendo request updates & new trips
+    // -> return to Domain the new trips & updates
+
+    // find user or create new one
+    let mut user = BahnProfile::new_with_options(
+        String::from("Knut"),
+        Some(27),
+        Some(true),
+        None,
+        Some(false),
+        Some("bahncard-2nd-25"),
+        None,
+    )?;
+
+    let user = controller.add_user(&mut user).await?;
+
+    let origin = "Frankfurt (Main) Hbf";
+    let destination = "Berlin Central Station";
     let date = chrono::Local::now();
-    let params: HashMap<String, String> = profile.request_parameter(date);
-    let result = vendo_socket.request(params.into_iter()).await?;
 
-    // TODO Deserialization into Journey (besides Legs) or deserialization function
-    let journey: JourneyData = serde_json::from_str(&result)?;
-    println!("{journey:?}");
+    //controller.new_trips(user, origin, destination, date).await?;
+
+    // Analyze newest tendencies
+    //controller.analyze_trends();
+
+    // push updates to MongoDB
+    //controller.update_db().await?;
 
     Ok(())
 }
-// Station: Error or Optional?
+
+// params: HashMap<String, String> = profile.as_hashmap(date);
+// result = vendo_socket.request(params.into_iter()).await?;
+// journeys: JourneyRequest = serde_json::from_str(&result)?;

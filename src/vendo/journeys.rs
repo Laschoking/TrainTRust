@@ -1,5 +1,5 @@
 //! Deserialize a GET response from the Vendo endpoint
-use crate::domain::journeys::Leg;
+use crate::mongo::journeys::{Journey, JourneySummary, Leg};
 use chrono::{DateTime, FixedOffset, Local, TimeDelta, Utc};
 use futures::stream::{StreamExt, TryStreamExt};
 use mongodb::{
@@ -36,15 +36,55 @@ pub(crate) struct JsonLeg {
     pub(crate) line: Option<Line>,
 }
 
+impl From<JsonJourney> for Journey {
+    fn from(journey: JsonJourney) -> Self {
+        assert!(!journey.legs.is_empty());
+        let departure = journey.legs[0].departure;
+        let arrival = journey
+            .legs
+            .last()
+            .expect("Journey consists of at least one leg")
+            .arrival;
+        assert!(departure < arrival);
+        let duration = arrival - departure;
+        let prices = HashMap::from([(Local::now().fixed_offset(), journey.price.amount)]);
+        Journey::new(
+            journey.refresh_token,
+            departure,
+            duration,
+            prices,
+            journey.legs.into_iter().map(Into::into).collect(),
+        )
+        // TODO implement JourneySummary either as separate (Journey, JourneySummary) or as field of Journey, but then it has to be separated in Mongo again
+        // Maybe HashMap<Journey, JourneySummary> ot sht
+    }
+}
+
+//impl From<JsonJourney> for JourneySummary {
+//    fn from(journey: JsonJourney) -> Self {
+//        assert!(!journey.legs.is_empty());
+//        let departure = journey.legs[0].departure;
+//        let arrival = journey
+//            .legs
+//            .last()
+//            .expect("Journey consists of at least one leg")
+//            .arrival;
+//        assert!(departure < arrival);
+//        let duration = arrival - departure;
+//        let prices = HashMap::from([(Local::now().fixed_offset(), journey.price.amount)]);
+//        JourneySummary::new(journey.refresh_token, departure, duration, prices)
+//    }
+//}
+
 impl From<JsonLeg> for Leg {
     fn from(leg: JsonLeg) -> Self {
-        Self {
-            origin: leg.origin.ibnr,
-            destination: leg.destination.ibnr,
-            departure: leg.departure,
-            arrival: leg.arrival,
-            line: leg.line.map(|line| line.name),
-        }
+        Self::new(
+            leg.origin.ibnr,
+            leg.destination.ibnr,
+            leg.departure,
+            leg.arrival,
+            leg.line.map(|line| line.name),
+        )
     }
 }
 
