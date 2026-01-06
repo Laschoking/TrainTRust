@@ -49,7 +49,7 @@ impl VendoSocket {
         } else {
             println!("Warning, received HTTP status {}", resp.status());
             println!("Return dummy resource");
-            // TODO make project structure flexible
+            // TODO use relative paths for portability
             fs::read_to_string("/home/kotname/Code/Rust/TrainTracker/data/dummy_journeys.json")
                 .map_err(|e| e.into())
 
