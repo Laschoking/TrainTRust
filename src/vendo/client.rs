@@ -1,9 +1,9 @@
 use crate::errors::ConnectionError;
 use http::StatusCode;
 use reqwest::{Client, Response};
-use std::collections::HashMap;
+use std::{collections::HashMap, fs};
 use thiserror::Error;
-use tokio::net::TcpStream;
+use tokio::{io::BufReader, net::TcpStream};
 use url::{ParseError, Url};
 
 #[derive(Error, Debug)]
@@ -14,6 +14,9 @@ pub enum VendoError {
     ServerError(#[from] reqwest::Error),
     #[error("Invalid Http status code {status:?}")]
     HttpStatusError { status: StatusCode },
+    /// Error that occurs when the dummy file is not available or invalid
+    #[error(transparent)]
+    FileReadingError(#[from] std::io::Error),
 }
 
 pub struct VendoSocket {
@@ -44,9 +47,15 @@ impl VendoSocket {
         if resp.status().is_success() {
             Ok(resp.text().await?)
         } else {
-            Err(VendoError::HttpStatusError {
-                status: resp.status(),
-            })
+            println!("Warning, received HTTP status {}", resp.status());
+            println!("Return dummy resource");
+            // TODO make project structure flexible
+            fs::read_to_string("/home/kotname/Code/Rust/TrainTracker/data/dummy_journeys.json")
+                .map_err(|e| e.into())
+
+            //Err(VendoError::HttpStatusError {
+            //    status: resp.status(),
+            //})
         }
     }
 }
@@ -54,6 +63,7 @@ impl VendoSocket {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::VENDO_URI;
     use std::iter;
 
     #[tokio::test]
@@ -66,7 +76,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_with_params() -> Result<(), VendoError> {
-        let socket = VendoSocket::try_from("https://v6.db.transport.rest/journeys")?;
+        let socket = VendoSocket::try_from(VENDO_URI)?;
         let frankfurt_ibnr = "8000105";
         let berlin_ibnr = "8011102";
         let params = HashMap::from([
@@ -79,7 +89,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_bad_status() -> Result<(), VendoError> {
-        let socket = VendoSocket::try_from("https://v6.db.transport.rest/journeys")?;
+        let socket = VendoSocket::try_from(VENDO_URI)?;
         let params = HashMap::from([("X".to_string(), "Y".to_string())]);
         socket.request(params.into_iter()).await?;
         Ok(())
