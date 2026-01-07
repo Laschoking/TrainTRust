@@ -158,7 +158,12 @@ impl BahnProfile {
 
     pub fn as_hashmap(&self) -> HashMap<String, String> {
         HashMap::from([
-            (String::from("name"), self.name.to_string()),
+            // Currently both fiels are removed because they are not used for the API request
+            //(
+            //    String::from("id"),
+            //    self.id.map(|id| id.to_string()).unwrap_or_default(),
+            //),
+            //(String::from("name"), self.name.to_string()),
             (String::from("age"), self.age.to_string()),
             (String::from("tickets"), self.tickets.to_string()),
             (String::from("results"), self.results.to_string()),

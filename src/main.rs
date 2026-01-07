@@ -46,7 +46,9 @@ async fn main() -> Result<(), errors::ConnectionError> {
     let destination = "Berlin Central Station";
     let date = chrono::Local::now();
 
-    //controller.new_trips(user, origin, destination, date).await?;
+    controller
+        .new_trips(user, origin, destination, date)
+        .await?;
 
     // Analyze newest tendencies
     //controller.analyze_trends();

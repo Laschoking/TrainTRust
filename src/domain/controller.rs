@@ -2,8 +2,11 @@ use crate::{
     config::{MONGO_CONNECTION_STRING, VENDO_URI},
     errors::ConnectionError,
     mongo::{
-        client::MongoClient, deutsche_bahn::BahnProfile, journeys::JourneySummary,
-        stations::Stations, trip::Trip,
+        client::MongoClient,
+        deutsche_bahn::BahnProfile,
+        journeys::JourneySummary,
+        stations::Stations,
+        trip::{StationIbnr, Trip, Trips},
     },
     vendo::{client::VendoSocket, journeys::JourneyRequest},
 };
@@ -18,7 +21,7 @@ pub struct Controller {
     /// Handles connection and requests to the vendo API
     vendo_socket: VendoSocket,
     /// All trips stored in MongoDB
-    trips: Vec<Trip>,
+    trips: Trips,
     /// Unique stations in MongoDB (retrieved from Wikidata)
     stations: Stations,
     /// All [BahnProfile]s that are stored in MongoDB
@@ -58,11 +61,31 @@ impl Controller {
 
     /// Retrieve new journeys from Vendo API
     pub async fn new_trips(
-        user: &str,
+        &self,
+        user: &BahnProfile,
         origin: &str,
         destination: &str,
         date: DateTime<FixedOffset>,
-    ) -> Result<(), ConnectionError> {
-        todo!()
+    ) -> Result<Trips, ConnectionError> {
+        let origin: StationIbnr = self.stations.try_get(origin)?.into();
+        let destination = self.stations.try_get(destination)?;
+        let origin = StationIbnr::from(origin);
+        let destination = StationIbnr::from(destination);
+
+        let user_name = user.name().clone();
+        let mut trip = match self.trips.find(user_name, &origin, &destination, date) {
+            Some(trip) => trip,
+            None => {
+                let mut trip = Trip::new(user_name, origin, destination, date);
+                &trip
+            }
+        };
+        let mut params = user.as_hashmap();
+        params.extend(trip.HTTP_params());
+        let data = self.vendo_socket.request(params).await?;
+
+        // TODO: At the end we need to save the new trip/ update the old one
+        //self.trips.add(trip);
+        Ok(())
     }
 }
