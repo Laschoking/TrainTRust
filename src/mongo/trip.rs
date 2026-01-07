@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{deutsche_bahn::BahnProfile, journeys::JourneySummary, stations::Station};
 use chrono::{DateTime, FixedOffset};
-use std::collections::HashSet;
+use std::{collections::HashMap, fmt};
 
 pub struct Trips(Vec<Trip>);
 
@@ -60,11 +60,11 @@ impl Trip {
     }
 
     /// Extract parameters for the API request
-    pub fn HTTP_params(&self) -> HashMap<String, String> {
+    pub fn http_params(&self) -> HashMap<String, String> {
         HashMap::from([
-            (String::from("from"), self.origin),
-            (String::from("to"), self.destination),
-            (String::from("date"), self.date),
+            (String::from("from"), self.origin.to_string()),
+            (String::from("to"), self.destination.to_string()),
+            (String::from("date"), self.date.to_string()),
         ])
     }
 
@@ -81,5 +81,10 @@ pub struct StationIbnr(u32);
 impl From<&Station> for StationIbnr {
     fn from(station: &Station) -> Self {
         Self(station.ibnr())
+    }
+}
+impl fmt::Display for StationIbnr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0.to_string())
     }
 }

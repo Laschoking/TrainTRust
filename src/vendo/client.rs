@@ -40,9 +40,7 @@ impl VendoSocket {
     where
         I: IntoIterator<Item = (String, String)>,
     {
-        let param2 = HashMap::from([("from", "8011102"), ("to", "8000105")]);
-
-        let url = reqwest::Url::parse_with_params(self.url.as_str(), param2.iter())?;
+        let url = reqwest::Url::parse_with_params(self.url.as_str(), params)?;
         let resp = self.client.get(url).send().await?;
         if resp.status().is_success() {
             Ok(resp.text().await?)

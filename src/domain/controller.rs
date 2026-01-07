@@ -4,7 +4,7 @@ use crate::{
     mongo::{
         client::MongoClient,
         deutsche_bahn::BahnProfile,
-        journeys::JourneySummary,
+        journeys::{JourneySummary, Journeys},
         stations::Stations,
         trip::{StationIbnr, Trip, Trips},
     },
@@ -81,8 +81,10 @@ impl Controller {
             }
         };
         let mut params = user.as_hashmap();
-        params.extend(trip.HTTP_params());
+        params.extend(trip.http_params());
         let data = self.vendo_socket.request(params).await?;
+        let journeys: JourneyRequest = serde_json::from_str(data.as_str())?;
+        // Transform into Journey Data
 
         // TODO: At the end we need to save the new trip/ update the old one
         //self.trips.add(trip);
