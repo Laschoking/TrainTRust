@@ -4,9 +4,15 @@ use super::{deutsche_bahn::BahnProfile, journeys::JourneySummary, stations::Stat
 use chrono::{DateTime, FixedOffset};
 use std::{collections::HashMap, fmt};
 
+#[derive(Serialize, Deserialize)]
 pub struct Trips(Vec<Trip>);
 
 impl Trips {
+    /// Initiate an empty [Trips] collection
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
     /// Finds an existing trip for specified parameters
     pub fn find(
         &self,
@@ -23,9 +29,16 @@ impl Trips {
         })
     }
 
-    /// Add a new [Trip] to [Trips]
-    pub fn add(&mut self, trip: Trip) {
+    /// Add a new [Trip] to [Trips] and return a reference
+    pub fn add(&mut self, trip: Trip) -> &mut Trip {
         self.0.push(trip);
+        self.0.last_mut().unwrap()
+    }
+}
+
+impl From<Vec<Trip>> for Trips {
+    fn from(value: Vec<Trip>) -> Self {
+        Self(value)
     }
 }
 

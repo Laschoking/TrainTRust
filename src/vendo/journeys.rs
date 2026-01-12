@@ -1,5 +1,5 @@
 //! Deserialize a GET response from the Vendo endpoint
-use crate::mongo::journeys::{Journey, JourneySummary, Leg};
+use crate::mongo::journeys::{Journey, JourneySummary, Journeys, Leg};
 use chrono::{DateTime, FixedOffset, Local, TimeDelta, Utc};
 use futures::stream::{StreamExt, TryStreamExt};
 use mongodb::{
@@ -12,11 +12,11 @@ use serde_aux::prelude::*;
 use std::collections::HashMap;
 
 #[derive(Deserialize, Debug)]
-/// One entire trip between two [Station] that may be direct or require change
-pub struct JourneyRequest {
+pub struct JsonRequest {
     journeys: Vec<JsonJourney>,
 }
 
+/// One entire trip between two [Station] that may be direct or require change
 #[derive(Deserialize, Debug)]
 pub struct JsonJourney {
     price: Price,
@@ -26,14 +26,25 @@ pub struct JsonJourney {
     tickets: Option<Vec<Ticket>>,
 }
 
+/// One direct train hop between [Origin] and [Destination]
 #[derive(Deserialize, Debug)]
-/// One direct train hop between two [Station]s
 pub(crate) struct JsonLeg {
     pub(crate) origin: Origin,
     pub(crate) destination: Destination,
     pub(crate) departure: DateTime<FixedOffset>,
     pub(crate) arrival: DateTime<FixedOffset>,
     pub(crate) line: Option<Line>,
+}
+
+impl From<JsonRequest> for Journeys {
+    fn from(data: JsonRequest) -> Self {
+        Journeys::new(
+            data.journeys
+                .into_iter()
+                .map(|journey| Journey::from(journey))
+                .collect(),
+        )
+    }
 }
 
 impl From<JsonJourney> for Journey {
@@ -134,7 +145,7 @@ mod tests {
     fn parse_json() -> Result<(), serde_json::Error> {
         let file = File::open("data/test_journey.json").unwrap();
         let reader = BufReader::new(file);
-        let _journey: JourneyRequest = serde_json::from_reader(reader)?;
+        let _journey: JsonRequest = serde_json::from_reader(reader)?;
         Ok(())
     }
 }

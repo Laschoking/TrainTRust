@@ -192,7 +192,7 @@ mod tests {
             Some("bahncard-2nd-25"),
             None,
         )?;
-        let m = client.add_user(&mut user).await?;
+        let m = client.insert_user(&mut user).await?;
         assert!(m.id.is_some());
         println!("inserted user {} with id {:?}", m.name, m.id);
         // Remove user from DB at the end

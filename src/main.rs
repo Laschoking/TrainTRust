@@ -1,6 +1,8 @@
 //! Client configuration to request and update trips and to sync with database.
 
 use crate::{domain::controller::Controller, mongo::deutsche_bahn::BahnProfile};
+use chrono::{FixedOffset, Local};
+
 mod config;
 mod domain;
 mod errors;
@@ -14,7 +16,7 @@ async fn main() -> Result<(), errors::ConnectionError> {
     // Second: make new price requests for new journeys
     // Potentially take command line arguments (from, to, date)
 
-    let controller = Controller::try_new().await?;
+    let mut controller = Controller::try_new().await?;
     //controller.load_data().await?;
 
     // main.rs accept user input, organize chrono runs
@@ -25,7 +27,7 @@ async fn main() -> Result<(), errors::ConnectionError> {
     // Give trips to domain client for processing
     // domain: find trips to update & add new trip requests
 
-    controller.update_trips().await?;
+    // TODO controller.update_trips().await?;
     // Vendo request updates & new trips
     // -> return to Domain the new trips & updates
 
@@ -40,14 +42,14 @@ async fn main() -> Result<(), errors::ConnectionError> {
         None,
     )?;
 
-    let user = controller.add_user(&mut user).await?;
+    let user = controller.insert_user(&mut user).await?;
 
     let origin = "Frankfurt (Main) Hbf";
     let destination = "Berlin Central Station";
-    let date = chrono::Local::now();
+    let date = Local::now().with_timezone(Local::now().offset());
 
     controller
-        .new_trips(user, origin, destination, date)
+        .update_trip(user, origin, destination, date)
         .await?;
 
     // Analyze newest tendencies
@@ -58,7 +60,3 @@ async fn main() -> Result<(), errors::ConnectionError> {
 
     Ok(())
 }
-
-// params: HashMap<String, String> = profile.as_hashmap(date);
-// result = vendo_socket.request(params.into_iter()).await?;
-// journeys: JourneyRequest = serde_json::from_str(&result)?;

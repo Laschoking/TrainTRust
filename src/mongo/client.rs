@@ -2,10 +2,11 @@
 use super::{
     deutsche_bahn::BahnProfile,
     stations::{Station, Stations},
-    trip::Trip,
+    trip::{Trip, Trips},
 };
 /// TODO: Maybe the implementation of IO should be handled by the MongoClient
 use crate::errors::ConnectionError;
+use futures::TryStreamExt;
 use mongodb::{
     Client, Collection, Database,
     bson::{Bson, Document, doc, oid::ObjectId},
@@ -37,7 +38,7 @@ impl MongoClient {
         Ok(Self { database })
     }
 
-    /// Return a reference to the database
+    /// Return a reference to the MongoDB database
     pub fn database(&self) -> &Database {
         &self.database
     }
@@ -46,6 +47,8 @@ impl MongoClient {
     // Update: trips
     // Insert: bahn_profiles/ trips/ journeys
 
+    /// Retrieve all [Station]s documents from MongoDb
+    /// Collects [Station]s in a HashSet to remove duplicates
     pub async fn load_stations(&self) -> Result<Stations, ConnectionError> {
         let mut cursor: mongodb::Cursor<Station> = self
             .database
@@ -63,16 +66,35 @@ impl MongoClient {
     }
 
     pub async fn load_profiles(&self) -> Result<Vec<BahnProfile>, ConnectionError> {
-        todo!()
+        let cursor = self
+            .database
+            .collection::<BahnProfile>("bahn_profiles")
+            .find(doc! {})
+            .await?;
+        let trips: Vec<BahnProfile> = cursor.try_collect().await?;
+        Ok(trips)
     }
 
-    pub async fn load_trips(&self) -> Result<Vec<Trip>, ConnectionError> {
-        todo!()
+    /// Retrieve all [Trip] documents from MongoDb collection
+    pub async fn load_trips(&self) -> Result<Trips, ConnectionError> {
+        let cursor = self
+            .database
+            .collection::<Trip>("trips")
+            .find(doc! {})
+            .await?;
+        let trips: Vec<Trip> = cursor.try_collect().await?;
+        Ok(Trips::from(trips))
+        //let mut trips = Trips::new();
+        //while cursor.advance().await? {
+        //    let trip = cursor.deserialize_current()?;
+        //    let _ = trips.add(trip);
+        //}
+        //Ok(trips)
     }
 
     /// Insert new [BahnProfile] in MongoDB collections
-    /// and overwrite its [ObjectId]
-    pub async fn add_user<'a>(
+    /// Overwrites the empty [ObjectId] of the [BahnProfile] with the [ObjectId] returned from MongoDB
+    pub async fn insert_user<'a>(
         &self,
         user: &'a mut BahnProfile,
     ) -> Result<&'a BahnProfile, ConnectionError> {

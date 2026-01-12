@@ -5,14 +5,20 @@ use chrono::format::Fixed;
 use chrono::{DateTime, FixedOffset, Local, TimeDelta};
 use serde::{Deserialize, Serialize};
 
-use crate::vendo::journeys::{JourneyRequest, JsonJourney, JsonLeg};
+use crate::vendo::journeys::{JsonJourney, JsonLeg, JsonRequest};
 use std::collections::{HashMap, HashSet};
 ///
-pub struct Journeys {
-    journeys: HashSet<Journey>,
+#[derive(Debug)]
+pub struct Journeys(Vec<Journey>);
+
+impl Journeys {
+    pub fn new(journeys: Vec<Journey>) -> Self {
+        Self(journeys)
+    }
 }
 
 /// This will serve as Serialization & Deserialization for MongoDB trips
+#[derive(Debug)]
 pub struct Journey {
     legs: Vec<Leg>,
     refresh_token: String,
@@ -42,6 +48,7 @@ impl Journey {
 }
 
 /// Contains the same parameters as the vendo struct, but flattens the JSON structure
+#[derive(Debug)]
 pub struct Leg {
     // TODO: evaluate if it is better to introduce a new() function and reduce visibility
     origin: u32,
@@ -69,8 +76,8 @@ impl Leg {
     }
 }
 
-#[derive(Serialize, Deserialize)]
 /// A summary of the most important aspects of a journey
+#[derive(Serialize, Deserialize)]
 pub struct JourneySummary {
     refresh_token: String,
     departure: DateTime<FixedOffset>,

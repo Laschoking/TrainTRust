@@ -4,11 +4,11 @@ use crate::{
     mongo::{
         client::MongoClient,
         deutsche_bahn::BahnProfile,
-        journeys::{JourneySummary, Journeys},
+        journeys::{Journey, JourneySummary, Journeys},
         stations::Stations,
         trip::{StationIbnr, Trip, Trips},
     },
-    vendo::{client::VendoSocket, journeys::JourneyRequest},
+    vendo::{client::VendoSocket, journeys::JsonRequest},
 };
 use chrono::{DateTime, FixedOffset, NaiveDateTime};
 use serde::{Deserialize, Serialize};
@@ -51,43 +51,46 @@ impl Controller {
         todo!()
     }
 
-    /// Add new user with [BahnProfile] to MongoDB
-    pub async fn add_user<'a>(
+    /// Insert new user with [BahnProfile] to MongoDB
+    pub async fn insert_user<'a>(
         &self,
         user: &'a mut BahnProfile,
     ) -> Result<&'a BahnProfile, ConnectionError> {
-        self.db_client.add_user(user).await
+        self.db_client.insert_user(user).await
     }
 
-    /// Retrieve new journeys from Vendo API
-    pub async fn new_trips(
-        &self,
+    /// Updates an existing trip if user parameters match, otherwise creates a new [Trip]
+    pub async fn update_trip(
+        &mut self,
         user: &BahnProfile,
         origin: &str,
         destination: &str,
         date: DateTime<FixedOffset>,
-    ) -> Result<Trips, ConnectionError> {
-        let origin: StationIbnr = self.stations.try_get(origin)?.into();
-        let destination = self.stations.try_get(destination)?;
-        let origin = StationIbnr::from(origin);
-        let destination = StationIbnr::from(destination);
+    ) -> Result<(), ConnectionError> {
+        let origin = self.stations.try_get(origin)?.into();
+        let destination = self.stations.try_get(destination)?.into();
 
         let user_name = user.name().clone();
-        let mut trip = match self.trips.find(user_name, &origin, &destination, date) {
+        let mut trip = match self
+            .trips
+            .find(user_name.clone(), &origin, &destination, date)
+        {
             Some(trip) => trip,
-            None => {
-                let mut trip = Trip::new(user_name, origin, destination, date);
-                &trip
-            }
+            None => self
+                .trips
+                .add(Trip::new(user_name, origin, destination, date)),
         };
         let mut params = user.as_hashmap();
         params.extend(trip.http_params());
-        let data = self.vendo_socket.request(params).await?;
-        let journeys: JourneyRequest = serde_json::from_str(data.as_str())?;
+        let json = self.vendo_socket.request(params).await?;
+        let des_data: JsonRequest = serde_json::from_str(json.as_str())?;
+        let journeys = Journeys::from(des_data);
+
+        println!("{journeys:?}");
         // Transform into Journey Data
 
         // TODO: At the end we need to save the new trip/ update the old one
-        //self.trips.add(trip);
+
         Ok(())
     }
 }
