@@ -182,9 +182,9 @@ mod tests {
     #[tokio::test]
     async fn insert_user() -> Result<(), ConnectionError> {
         let client = MongoClient::try_connect(MONGO_CONNECTION_STRING).await?;
-
+        let name = String::from("Karla");
         let mut user = BahnProfile::new_with_options(
-            String::from("Karla"),
+            name.clone(),
             Some(27),
             Some(true),
             None,
@@ -192,11 +192,14 @@ mod tests {
             Some("bahncard-2nd-25"),
             None,
         )?;
-        let m = client.insert_user(&mut user).await?;
-        assert!(m.id.is_some());
-        println!("inserted user {} with id {:?}", m.name, m.id);
+        let res = client.insert(user).await?;
+        let id = res.inserted_id.as_object_id();
+        assert!(id.is_some());
+        println!("inserted user {} with id {:?}", name, id);
         // Remove user from DB at the end
-        client.drop_user(m.id.expect("id is not None")).await?;
+        client
+            .drop::<BahnProfile>(id.expect("id is not None"))
+            .await?;
 
         Ok(())
     }

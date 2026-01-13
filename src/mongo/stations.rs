@@ -4,6 +4,7 @@
 /// It is questionable, if the fuzzy matching should be here though, since its rather algorithmic and not IO
 use crate::errors::ConnectionError;
 use futures::stream::{StreamExt, TryStreamExt};
+
 use fuzzy_match::fuzzy_match;
 use mongodb::{
     Database,
@@ -25,6 +26,11 @@ impl Deref for Stations {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+impl From<Vec<Station>> for Stations {
+    fn from(value: Vec<Station>) -> Self {
+        Self(HashSet::from_iter(value))
     }
 }
 
@@ -57,10 +63,19 @@ impl Stations {
 pub struct Station {
     #[serde(rename = "_id")]
     id: ObjectId,
-    #[serde(rename = "Name")]
+    #[serde(rename = "Name", deserialize_with = "deserialize_unidecoded_string")]
     pub(crate) name: String,
     #[serde(rename = "IBNR")]
     ibnr: u32,
+}
+
+/// Deserialize and unidecode the [Station] name
+fn deserialize_unidecoded_string<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    Ok(unidecode(&s))
 }
 
 impl Hash for Station {
@@ -113,7 +128,7 @@ mod tests {
     #[tokio::test]
     async fn station_matching() -> Result<(), ConnectionError> {
         let mongo: MongoClient = MongoClient::try_connect(MONGO_CONNECTION_STRING).await?;
-        let stations = mongo.load_stations().await?;
+        let stations = Stations::from(mongo.load::<Station>().await?);
         let station = stations.try_get("Berlin Central Station")?;
         println!("{station:?}");
         Ok(())
@@ -137,7 +152,7 @@ mod tests {
     #[tokio::test]
     async fn unicode_station_name() -> Result<(), ConnectionError> {
         let mongo: MongoClient = MongoClient::try_connect(MONGO_CONNECTION_STRING).await?;
-        let stations = mongo.load_stations().await?;
+        let stations = Stations::from(mongo.load::<Station>().await?);
         let mut flag = false;
         for station in stations.iter() {
             if station.name.len() != station.name.chars().count() {

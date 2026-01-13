@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::vendo::journeys::{JsonJourney, JsonLeg, JsonRequest};
 use std::collections::{HashMap, HashSet};
+
+///
 ///
 #[derive(Debug)]
 pub struct Journeys(Vec<Journey>);
@@ -18,7 +20,7 @@ impl Journeys {
 }
 
 /// This will serve as Serialization & Deserialization for MongoDB trips
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Journey {
     legs: Vec<Leg>,
     refresh_token: String,
@@ -48,7 +50,7 @@ impl Journey {
 }
 
 /// Contains the same parameters as the vendo struct, but flattens the JSON structure
-#[derive(Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Leg {
     // TODO: evaluate if it is better to introduce a new() function and reduce visibility
     origin: u32,

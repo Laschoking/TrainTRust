@@ -2,11 +2,11 @@ use crate::{
     config::{MONGO_CONNECTION_STRING, VENDO_URI},
     errors::ConnectionError,
     mongo::{
+        bahn_profiles::BahnProfile,
         client::MongoClient,
-        deutsche_bahn::BahnProfile,
         journeys::{Journey, JourneySummary, Journeys},
-        stations::Stations,
-        trip::{StationIbnr, Trip, Trips},
+        stations::{Station, Stations},
+        trips::{StationIbnr, Trip, Trips},
     },
     vendo::{client::VendoSocket, journeys::JsonRequest},
 };
@@ -33,10 +33,10 @@ impl Controller {
     pub async fn try_new() -> Result<Self, ConnectionError> {
         let db_client = MongoClient::try_connect(MONGO_CONNECTION_STRING).await?;
         let vendo_socket = VendoSocket::try_from(VENDO_URI)?;
-        let stations = db_client.load_stations().await?;
+        let stations = Stations::from(db_client.load::<Station>().await?);
         // TODO Potentially at some point we dont want to load everything anymore, but only some filtered data
-        let trips = db_client.load_trips().await?;
-        let profiles = db_client.load_profiles().await?;
+        let trips = Trips::from(db_client.load::<Trip>().await?);
+        let profiles = db_client.load::<BahnProfile>().await?;
 
         Ok(Self {
             db_client,

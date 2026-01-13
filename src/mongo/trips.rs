@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::{deutsche_bahn::BahnProfile, journeys::JourneySummary, stations::Station};
+use super::{bahn_profiles::BahnProfile, journeys::JourneySummary, stations::Station};
 use chrono::{DateTime, FixedOffset};
 use std::{collections::HashMap, fmt};
 

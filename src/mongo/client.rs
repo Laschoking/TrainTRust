@@ -1,8 +1,9 @@
 //! Provide connection to MongoDB and document manipulation options.
 use super::{
-    deutsche_bahn::BahnProfile,
+    bahn_profiles::BahnProfile,
+    journeys::Journey,
     stations::{Station, Stations},
-    trip::{Trip, Trips},
+    trips::{Trip, Trips},
 };
 /// TODO: Maybe the implementation of IO should be handled by the MongoClient
 use crate::errors::ConnectionError;
@@ -10,7 +11,9 @@ use futures::TryStreamExt;
 use mongodb::{
     Client, Collection, Database,
     bson::{Bson, Document, doc, oid::ObjectId},
+    results::InsertOneResult,
 };
+use serde::{Deserialize, Serialize};
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -22,6 +25,25 @@ pub struct MongoClient {
     /// Entry point of the 'train_tracker' database
     database: Database,
 }
+
+pub trait MongoDocument:
+    Sized + Serialize + for<'de> Deserialize<'de> + Unpin + Send + Sync
+{
+    const COLLECTION: &'static str;
+}
+impl MongoDocument for Station {
+    const COLLECTION: &'static str = "stations";
+}
+impl MongoDocument for BahnProfile {
+    const COLLECTION: &'static str = "bahn_profiles";
+}
+impl MongoDocument for Trip {
+    const COLLECTION: &'static str = "trips";
+}
+impl MongoDocument for Journey {
+    const COLLECTION: &'static str = "journeys";
+}
+
 impl MongoClient {
     /// Creates a client for with connection to MongoDB server
     pub async fn try_connect(uri: &str) -> Result<Self, ConnectionError> {
@@ -42,54 +64,43 @@ impl MongoClient {
     pub fn database(&self) -> &Database {
         &self.database
     }
-    // TODO: eigenen Trait implementieren?
-    // Load: stations/ bahn_profiles/ trips/ journeys
-    // Update: trips
-    // Insert: bahn_profiles/ trips/ journeys
 
-    /// Retrieve all [Station]s documents from MongoDb
-    /// Collects [Station]s in a HashSet to remove duplicates
-    pub async fn load_stations(&self) -> Result<Stations, ConnectionError> {
-        let mut cursor: mongodb::Cursor<Station> = self
-            .database
-            .collection("stations")
-            .find(doc! {})
-            .projection(doc! {"_id": 1, "Name": 1, "IBNR" :1})
-            .await?;
-        let mut stations = HashSet::new();
-        while cursor.advance().await? {
-            let mut station = cursor.deserialize_current()?;
-            station.name = unidecode(&station.name);
-            stations.insert(station);
-        }
-        Ok(Stations(stations))
-    }
-
-    pub async fn load_profiles(&self) -> Result<Vec<BahnProfile>, ConnectionError> {
+    /// 
+    pub async fn load<T>(&self) -> Result<Vec<T>, ConnectionError>
+    where
+        T: MongoDocument,
+    {
         let cursor = self
             .database
-            .collection::<BahnProfile>("bahn_profiles")
+            .collection::<T>(T::COLLECTION)
             .find(doc! {})
             .await?;
-        let trips: Vec<BahnProfile> = cursor.try_collect().await?;
-        Ok(trips)
+
+        Ok(cursor.try_collect().await?)
+    }
+    
+    /// Insert a document into collection
+    pub async fn insert<T>(&self, t: T) -> Result<InsertOneResult, ConnectionError>
+    where
+        T: MongoDocument + Send + Sync,
+    {
+        self.database
+            .collection::<T>(T::COLLECTION)
+            .insert_one(t)
+            .await
+            .map_err(|err| err.into())
     }
 
-    /// Retrieve all [Trip] documents from MongoDb collection
-    pub async fn load_trips(&self) -> Result<Trips, ConnectionError> {
-        let cursor = self
-            .database
-            .collection::<Trip>("trips")
-            .find(doc! {})
+    /// Delete a document by its [ObjectId] from collection
+    pub async fn drop<T>(&self, id: ObjectId) -> Result<(), ConnectionError>
+    where
+        T: MongoDocument + Send + Sync,
+    {
+        self.database
+            .collection::<T>(T::COLLECTION)
+            .delete_one(doc! {"_id": id})
             .await?;
-        let trips: Vec<Trip> = cursor.try_collect().await?;
-        Ok(Trips::from(trips))
-        //let mut trips = Trips::new();
-        //while cursor.advance().await? {
-        //    let trip = cursor.deserialize_current()?;
-        //    let _ = trips.add(trip);
-        //}
-        //Ok(trips)
+        Ok(())
     }
 
     /// Insert new [BahnProfile] in MongoDB collections
@@ -115,15 +126,6 @@ impl MongoClient {
             user.id = result.inserted_id.as_object_id();
         }
         Ok(user)
-    }
-
-    /// Remove a [BahnProfile] by its ObjectId
-    pub async fn drop_user(&self, id: ObjectId) -> Result<(), ConnectionError> {
-        self.database
-            .collection::<BahnProfile>("bahn_profiles")
-            .delete_one(doc! {"_id": id})
-            .await?;
-        Ok(())
     }
 }
 

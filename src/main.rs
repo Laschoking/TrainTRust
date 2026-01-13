@@ -1,6 +1,6 @@
 //! Client configuration to request and update trips and to sync with database.
 
-use crate::{domain::controller::Controller, mongo::deutsche_bahn::BahnProfile};
+use crate::{domain::controller::Controller, mongo::bahn_profiles::BahnProfile};
 use chrono::{FixedOffset, Local};
 
 mod config;
