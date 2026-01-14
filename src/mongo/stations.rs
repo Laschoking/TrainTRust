@@ -1,6 +1,6 @@
 //! Match stations in MongoDB to trip stations
 
-/// Stations come from a MongoDB collection, so their implementation should be located under mongo/
+/// Stations come from a MongoDB collection, so their implementation should be located under db_client/
 /// It is questionable, if the fuzzy matching should be here though, since its rather algorithmic and not IO
 use crate::errors::ConnectionError;
 use futures::stream::{StreamExt, TryStreamExt};
@@ -12,13 +12,29 @@ use mongodb::{
 };
 use unidecode::unidecode;
 
+use super::client::DocumentCollection;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 
 /// Contains all long distaince train stations from Wikidata
 pub struct Stations(pub(super) HashSet<Station>);
+
+/// A train [Station] from Wikidata
+#[derive(Debug, Deserialize, Clone)]
+pub struct Station {
+    #[serde(rename = "_id")]
+    id: ObjectId,
+    #[serde(rename = "Name", deserialize_with = "deserialize_unidecoded_string")]
+    pub(crate) name: String,
+    #[serde(rename = "IBNR")]
+    ibnr: u32,
+}
+
+#[derive(Serialize, Deserialize, PartialEq)]
+pub struct StationIbnr(u32);
 
 /// Dereference into [HashSet<Station>]
 impl Deref for Stations {
@@ -30,7 +46,14 @@ impl Deref for Stations {
 }
 impl From<Vec<Station>> for Stations {
     fn from(value: Vec<Station>) -> Self {
-        Self(HashSet::from_iter(value))
+        Self(value.into_iter().collect())
+    }
+}
+
+impl DocumentCollection for Stations {
+    type Document = Station;
+    fn add(&mut self, document: Self::Document) -> &mut Self::Document {
+        panic!("It is not expected to insert new Stations!");
     }
 }
 
@@ -56,17 +79,6 @@ impl Stations {
             }),
         }
     }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-/// A train station from Wikidata
-pub struct Station {
-    #[serde(rename = "_id")]
-    id: ObjectId,
-    #[serde(rename = "Name", deserialize_with = "deserialize_unidecoded_string")]
-    pub(crate) name: String,
-    #[serde(rename = "IBNR")]
-    ibnr: u32,
 }
 
 /// Deserialize and unidecode the [Station] name
@@ -95,6 +107,17 @@ impl Eq for Station {}
 impl Station {
     pub fn ibnr(&self) -> u32 {
         self.ibnr
+    }
+}
+
+impl From<&Station> for StationIbnr {
+    fn from(station: &Station) -> Self {
+        Self(station.ibnr())
+    }
+}
+impl fmt::Display for StationIbnr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0.to_string())
     }
 }
 
@@ -127,8 +150,8 @@ mod tests {
 
     #[tokio::test]
     async fn station_matching() -> Result<(), ConnectionError> {
-        let mongo: MongoClient = MongoClient::try_connect(MONGO_CONNECTION_STRING).await?;
-        let stations = Stations::from(mongo.load::<Station>().await?);
+        let db_client: MongoClient = MongoClient::try_connect(MONGO_CONNECTION_STRING).await?;
+        let stations = db_client.load::<Stations>().await?;
         let station = stations.try_get("Berlin Central Station")?;
         println!("{station:?}");
         Ok(())
@@ -151,8 +174,8 @@ mod tests {
 
     #[tokio::test]
     async fn unicode_station_name() -> Result<(), ConnectionError> {
-        let mongo: MongoClient = MongoClient::try_connect(MONGO_CONNECTION_STRING).await?;
-        let stations = Stations::from(mongo.load::<Station>().await?);
+        let db_client: MongoClient = MongoClient::try_connect(MONGO_CONNECTION_STRING).await?;
+        let stations = db_client.load::<Stations>().await?;
         let mut flag = false;
         for station in stations.iter() {
             if station.name.len() != station.name.chars().count() {

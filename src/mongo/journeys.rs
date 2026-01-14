@@ -1,11 +1,12 @@
 //! Represents the core journeys, that can be deserialized from MongoDB or Http GET requests
 
+use super::client::{DocumentCollection, InsertPendingDocument};
+use crate::vendo::journeys::{JsonJourney, JsonLeg, JsonRequest};
 use chrono::Duration;
 use chrono::format::Fixed;
 use chrono::{DateTime, FixedOffset, Local, TimeDelta};
+use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
-
-use crate::vendo::journeys::{JsonJourney, JsonLeg, JsonRequest};
 use std::collections::{HashMap, HashSet};
 
 ///
@@ -19,9 +20,18 @@ impl Journeys {
     }
 }
 
-/// This will serve as Serialization & Deserialization for MongoDB trips
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct Journey {
+    id: ObjectId,
+    legs: Vec<Leg>,
+    refresh_token: String,
+    departure: DateTime<FixedOffset>,
+    duration: Duration,
+    prices: HashMap<DateTime<FixedOffset>, f32>,
+}
+/// This will serve as Serialization & Deserialization for MongoDB trips
+#[derive(Debug, Serialize)]
+pub struct PendingJourney {
     legs: Vec<Leg>,
     refresh_token: String,
     departure: DateTime<FixedOffset>,
@@ -31,7 +41,34 @@ pub struct Journey {
     // Leave Price, origin, destination out bc. they will be in the TripRecords
 }
 
-impl Journey {
+impl DocumentCollection for Journeys {
+    type Document = Journey;
+    fn add(&mut self, document: Self::Document) -> &mut Self::Document {
+        self.0.push(document);
+        self.0
+            .last_mut()
+            .expect("At least one value is in collection")
+    }
+}
+
+impl InsertPendingDocument for PendingJourney {
+    const COLLECTION: &'static str = "journeys";
+
+    type Persisted = Journey;
+
+    fn with_id(self, id: ObjectId) -> Self::Persisted {
+        Self::Persisted {
+            id,
+            legs: self.legs,
+            refresh_token: self.refresh_token,
+            departure: self.departure,
+            duration: self.duration,
+            prices: self.prices,
+        }
+    }
+}
+
+impl PendingJourney {
     pub fn new(
         refresh_token: String,
         departure: DateTime<FixedOffset>,

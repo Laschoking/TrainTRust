@@ -1,14 +1,59 @@
 //! Profiles for Deutsche Bahn to collect parameters for Http GET request
 
 //use crate::journey::Journey;
+use super::{
+    client::{DocumentCollection, InsertPendingDocument},
+    stations::Station,
+};
 use crate::errors::ConnectionError;
-use crate::mongo::stations::Station;
-use chrono::{DateTime, Local, TimeDelta};
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
+
+/// Information for an API request to the Vendo endpoint
+#[derive(Serialize)]
+pub struct PendingBahnProfile {
+    name: String,
+    age: u8,
+    tickets: bool,
+    results: u8,
+    first_class: bool,
+    loyalty_card: LoyaltyCard,
+    endpoint: String,
+}
+
+#[derive(Deserialize)]
+pub struct BahnProfile {
+    #[serde(rename = "_id")]
+    id: ObjectId,
+    name: String,
+    age: u8,
+    tickets: bool,
+    results: u8,
+    first_class: bool,
+    loyalty_card: LoyaltyCard,
+    endpoint: String,
+}
+
+pub struct BahnProfiles(Vec<BahnProfile>);
+
+impl From<Vec<BahnProfile>> for BahnProfiles {
+    fn from(value: Vec<BahnProfile>) -> Self {
+        Self(value)
+    }
+}
+
+impl DocumentCollection for BahnProfiles {
+    type Document = BahnProfile;
+    fn add(&mut self, document: Self::Document) -> &mut Self::Document {
+        self.0.push(document);
+        self.0
+            .last_mut()
+            .expect("At least one value is in collection")
+    }
+}
 
 #[derive(Serialize, Deserialize)]
 /// Reduction cards supported by Deutsche Bahn
@@ -31,6 +76,74 @@ pub enum LoyaltyCard {
     Generalabonnement,
     Nl40,
     AtKlimaticket,
+}
+
+impl InsertPendingDocument for PendingBahnProfile {
+    const COLLECTION: &'static str = "bahn_profiles";
+    type Persisted = BahnProfile;
+
+    fn with_id(self, id: ObjectId) -> Self::Persisted {
+        Self::Persisted {
+            id,
+            name: self.name,
+            age: self.age,
+            tickets: self.tickets,
+            results: self.results,
+            first_class: self.first_class,
+            loyalty_card: self.loyalty_card,
+            endpoint: self.endpoint,
+        }
+    }
+}
+
+impl PendingBahnProfile {
+    pub fn new_with_options(
+        name: String,
+        age: Option<u8>,
+        tickets: Option<bool>,
+        results: Option<u8>,
+        first_class: Option<bool>,
+        loyalty_card: Option<&str>,
+        endpoint: Option<String>,
+    ) -> Result<PendingBahnProfile, ConnectionError> {
+        let loyalty_card = LoyaltyCard::from_str(loyalty_card.unwrap_or("None"))?;
+        Ok(Self {
+            name,
+            age: age.unwrap_or(30),
+            tickets: tickets.unwrap_or(true),
+            results: results.unwrap_or(10),
+            first_class: first_class.unwrap_or(false),
+            loyalty_card,
+            endpoint: endpoint.unwrap_or(String::from("dbnav")),
+        })
+    }
+}
+
+impl BahnProfile {
+    pub fn id(&self) -> &ObjectId {
+        &self.id
+    }
+
+    pub fn name(&self) -> &String {
+        &self.name
+    }
+
+    pub fn as_hashmap(&self) -> HashMap<String, String> {
+        HashMap::from([
+            // Currently both fiels are removed because they are not used for the API request
+            //(
+            //    String::from("id"),
+            //    self.id.map(|id| id.to_string()).unwrap_or_default(),
+            //),
+            //(String::from("name"), self.name.to_string()),
+            (String::from("age"), self.age.to_string()),
+            (String::from("tickets"), self.tickets.to_string()),
+            (String::from("results"), self.results.to_string()),
+            (String::from("firstClass"), self.first_class.to_string()),
+            (String::from("loyaltyCard"), self.loyalty_card.to_string()),
+            (String::from("profile"), self.endpoint.to_string()),
+        ])
+    }
 }
 
 impl FromStr for LoyaltyCard {
@@ -112,68 +225,6 @@ impl Display for LoyaltyCard {
     }
 }
 
-/// Information for an API request to the Vendo endpoint
-#[derive(Deserialize, Serialize)]
-pub struct BahnProfile {
-    #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
-    pub id: Option<ObjectId>,
-    name: String,
-    age: u8,
-    tickets: bool,
-    results: u8,
-    first_class: bool,
-    loyalty_card: LoyaltyCard,
-    endpoint: String,
-}
-
-impl BahnProfile {
-    pub fn new_with_options(
-        name: String,
-        age: Option<u8>,
-        tickets: Option<bool>,
-        results: Option<u8>,
-        first_class: Option<bool>,
-        loyalty_card: Option<&str>,
-        endpoint: Option<String>,
-    ) -> Result<BahnProfile, ConnectionError> {
-        let loyalty_card = LoyaltyCard::from_str(loyalty_card.unwrap_or("None"))?;
-        Ok(Self {
-            id: None, // Expect no mongo id for new profile
-            name,
-            age: age.unwrap_or(30),
-            tickets: tickets.unwrap_or(true),
-            results: results.unwrap_or(10),
-            first_class: first_class.unwrap_or(false),
-            loyalty_card,
-            endpoint: endpoint.unwrap_or(String::from("dbnav")),
-        })
-    }
-    pub fn id(&self) -> &Option<ObjectId> {
-        &self.id
-    }
-
-    pub fn name(&self) -> &String {
-        &self.name
-    }
-
-    pub fn as_hashmap(&self) -> HashMap<String, String> {
-        HashMap::from([
-            // Currently both fiels are removed because they are not used for the API request
-            //(
-            //    String::from("id"),
-            //    self.id.map(|id| id.to_string()).unwrap_or_default(),
-            //),
-            //(String::from("name"), self.name.to_string()),
-            (String::from("age"), self.age.to_string()),
-            (String::from("tickets"), self.tickets.to_string()),
-            (String::from("results"), self.results.to_string()),
-            (String::from("firstClass"), self.first_class.to_string()),
-            (String::from("loyaltyCard"), self.loyalty_card.to_string()),
-            (String::from("profile"), self.endpoint.to_string()),
-        ])
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -182,9 +233,9 @@ mod tests {
     #[tokio::test]
     async fn insert_user() -> Result<(), ConnectionError> {
         let client = MongoClient::try_connect(MONGO_CONNECTION_STRING).await?;
-        let name = String::from("Karla");
-        let mut user = BahnProfile::new_with_options(
-            name.clone(),
+        let mut profiles = client.load::<BahnProfiles>().await?;
+        let pending = PendingBahnProfile::new_with_options(
+            String::from("Karla"),
             Some(27),
             Some(true),
             None,
@@ -192,14 +243,10 @@ mod tests {
             Some("bahncard-2nd-25"),
             None,
         )?;
-        let res = client.insert(user).await?;
-        let id = res.inserted_id.as_object_id();
-        assert!(id.is_some());
-        println!("inserted user {} with id {:?}", name, id);
+        let user = client.persist_and_add(&mut profiles, pending).await?;
+        println!("inserted user {} with id {:?}", user.name(), user.id());
         // Remove user from DB at the end
-        client
-            .drop::<BahnProfile>(id.expect("id is not None"))
-            .await?;
+        client.drop::<BahnProfile>(user.id()).await?;
 
         Ok(())
     }

@@ -1,9 +1,9 @@
 //! Provide connection to MongoDB and document manipulation options.
 use super::{
-    bahn_profiles::BahnProfile,
-    journeys::Journey,
+    bahn_profiles::{BahnProfile, BahnProfiles, PendingBahnProfile},
+    journeys::{Journey, Journeys, PendingJourney},
     stations::{Station, Stations},
-    trips::{Trip, Trips},
+    trips::{PendingTrip, Trip, Trips},
 };
 /// TODO: Maybe the implementation of IO should be handled by the MongoClient
 use crate::errors::ConnectionError;
@@ -26,9 +26,14 @@ pub struct MongoClient {
     database: Database,
 }
 
-pub trait MongoDocument:
-    Sized + Serialize + for<'de> Deserialize<'de> + Unpin + Send + Sync
-{
+/// Specify the type of [MongoDocument] a [DocumentCollection] will contain
+pub trait DocumentCollection {
+    type Document: MongoDocument;
+    fn add(&mut self, document: Self::Document) -> &mut Self::Document;
+}
+
+/// Specify the MongoDB collection string for each document type
+pub trait MongoDocument: Sized + for<'de> Deserialize<'de> + Unpin + Send + Sync {
     const COLLECTION: &'static str;
 }
 impl MongoDocument for Station {
@@ -42,6 +47,12 @@ impl MongoDocument for Trip {
 }
 impl MongoDocument for Journey {
     const COLLECTION: &'static str = "journeys";
+}
+
+pub trait InsertPendingDocument: Sized + Serialize + Send + Sync {
+    const COLLECTION: &'static str;
+    type Persisted: MongoDocument;
+    fn with_id(self, id: ObjectId) -> Self::Persisted;
 }
 
 impl MongoClient {
@@ -65,34 +76,23 @@ impl MongoClient {
         &self.database
     }
 
-    /// 
-    pub async fn load<T>(&self) -> Result<Vec<T>, ConnectionError>
+    ///
+    pub async fn load<C>(&self) -> Result<C, ConnectionError>
     where
-        T: MongoDocument,
+        C: DocumentCollection + From<Vec<C::Document>>,
     {
         let cursor = self
             .database
-            .collection::<T>(T::COLLECTION)
+            .collection::<C::Document>(C::Document::COLLECTION)
             .find(doc! {})
             .await?;
 
-        Ok(cursor.try_collect().await?)
-    }
-    
-    /// Insert a document into collection
-    pub async fn insert<T>(&self, t: T) -> Result<InsertOneResult, ConnectionError>
-    where
-        T: MongoDocument + Send + Sync,
-    {
-        self.database
-            .collection::<T>(T::COLLECTION)
-            .insert_one(t)
-            .await
-            .map_err(|err| err.into())
+        let vec = cursor.try_collect().await?;
+        Ok(C::from(vec))
     }
 
     /// Delete a document by its [ObjectId] from collection
-    pub async fn drop<T>(&self, id: ObjectId) -> Result<(), ConnectionError>
+    pub async fn drop<T>(&self, id: &ObjectId) -> Result<(), ConnectionError>
     where
         T: MongoDocument + Send + Sync,
     {
@@ -103,29 +103,27 @@ impl MongoClient {
         Ok(())
     }
 
-    /// Insert new [BahnProfile] in MongoDB collections
-    /// Overwrites the empty [ObjectId] of the [BahnProfile] with the [ObjectId] returned from MongoDB
-    pub async fn insert_user<'a>(
+    /// Push a pending document to MongoDB and safe it with [ObjectId] in collection
+    pub async fn persist_and_add<'a, R, T>(
         &self,
-        user: &'a mut BahnProfile,
-    ) -> Result<&'a BahnProfile, ConnectionError> {
-        if let Some(id) = self
+        collection: &'a mut R,
+        pending: T,
+    ) -> Result<&'a mut R::Document, ConnectionError>
+    where
+        R: DocumentCollection,
+        T: InsertPendingDocument<Persisted = R::Document>,
+    {
+        let result = self
             .database
-            .collection("bahn_profiles")
-            .find_one(doc! {"user_name": user.name()})
-            .projection(doc! {"_id" : 1})
-            .await?
-        {
-            user.id = Some(id);
-        } else {
-            let result = self
-                .database
-                .collection::<BahnProfile>("bahn_profiles")
-                .insert_one(&mut *user)
-                .await?;
-            user.id = result.inserted_id.as_object_id();
-        }
-        Ok(user)
+            .collection::<T>(T::COLLECTION)
+            .insert_one(&pending)
+            .await?;
+        let id = result
+            .inserted_id
+            .as_object_id()
+            .expect("This should return an ObjectId");
+        let value = pending.with_id(id);
+        Ok(collection.add(value))
     }
 }
 
