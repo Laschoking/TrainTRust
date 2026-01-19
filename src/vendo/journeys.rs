@@ -1,5 +1,5 @@
 //! Deserialize a GET response from the Vendo endpoint
-use crate::mongo::journeys::{Journey, JourneySummary, Journeys, Leg};
+use crate::mongo::journeys::{JourneySummary, Journeys, Leg, PendingJourney};
 use chrono::{DateTime, FixedOffset, Local, TimeDelta, Utc};
 use futures::stream::{StreamExt, TryStreamExt};
 use mongodb::{
@@ -36,18 +36,16 @@ pub(crate) struct JsonLeg {
     pub(crate) line: Option<Line>,
 }
 
-impl From<JsonRequest> for Journeys {
+impl From<JsonRequest> for Vec<PendingJourney> {
     fn from(data: JsonRequest) -> Self {
-        Journeys::new(
-            data.journeys
-                .into_iter()
-                .map(|journey| Journey::from(journey))
-                .collect(),
-        )
+        data.journeys
+            .into_iter()
+            .map(|journey| PendingJourney::from(journey))
+            .collect()
     }
 }
 
-impl From<JsonJourney> for Journey {
+impl From<JsonJourney> for PendingJourney {
     fn from(journey: JsonJourney) -> Self {
         assert!(!journey.legs.is_empty());
         let departure = journey.legs[0].departure;
@@ -59,7 +57,7 @@ impl From<JsonJourney> for Journey {
         assert!(departure < arrival);
         let duration = arrival - departure;
         let prices = HashMap::from([(Local::now().fixed_offset(), journey.price.amount)]);
-        Journey::new(
+        PendingJourney::new(
             journey.refresh_token,
             departure,
             duration,

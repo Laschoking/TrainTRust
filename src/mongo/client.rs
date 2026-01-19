@@ -1,7 +1,7 @@
 //! Provide connection to MongoDB and document manipulation options.
 use super::{
     bahn_profiles::{BahnProfile, BahnProfiles, PendingBahnProfile},
-    journeys::{Journey, Journeys, PendingJourney},
+    journeys::{Journey, JourneySummary, Journeys, PendingJourney},
     stations::{Station, Stations},
     trips::{PendingTrip, Trip, Trips},
 };
@@ -35,18 +35,7 @@ pub trait DocumentCollection {
 /// Specify the MongoDB collection string for each document type
 pub trait MongoDocument: Sized + for<'de> Deserialize<'de> + Unpin + Send + Sync {
     const COLLECTION: &'static str;
-}
-impl MongoDocument for Station {
-    const COLLECTION: &'static str = "stations";
-}
-impl MongoDocument for BahnProfile {
-    const COLLECTION: &'static str = "bahn_profiles";
-}
-impl MongoDocument for Trip {
-    const COLLECTION: &'static str = "trips";
-}
-impl MongoDocument for Journey {
-    const COLLECTION: &'static str = "journeys";
+    fn id(&self) -> &ObjectId;
 }
 
 pub trait InsertPendingDocument: Sized + Serialize + Send + Sync {
@@ -100,6 +89,24 @@ impl MongoClient {
             .collection::<T>(T::COLLECTION)
             .delete_one(doc! {"_id": id})
             .await?;
+        Ok(())
+    }
+
+    pub async fn push_trip_summary(
+        &self,
+        trip: &mut Trip,
+        summary: JourneySummary,
+    ) -> Result<(), ConnectionError> {
+        self.database
+            .collection::<Trip>(Trip::COLLECTION)
+            .update_one(
+                doc! {"_id" : trip.id()},
+                doc! {"$push" :
+                {"journey_summary" :  mongodb::bson::to_bson(&summary)?}},
+            )
+            .await?;
+
+        trip.add_summary(summary);
         Ok(())
     }
 

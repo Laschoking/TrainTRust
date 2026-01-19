@@ -2,11 +2,11 @@ use crate::{
     config::{MONGO_CONNECTION_STRING, VENDO_URI},
     errors::ConnectionError,
     mongo::{
-        bahn_profiles::BahnProfile,
+        bahn_profiles::{BahnProfile, BahnProfiles, PendingBahnProfile},
         client::MongoClient,
-        journeys::{Journey, JourneySummary, Journeys},
-        stations::{Station, Stations},
-        trips::{StationIbnr, Trip, Trips},
+        journeys::{Journey, JourneySummary, Journeys, PendingJourney},
+        stations::{Station, StationIbnr, Stations},
+        trips::{PendingTrip, Trip, Trips},
     },
     vendo::{client::VendoSocket, journeys::JsonRequest},
 };
@@ -16,6 +16,7 @@ use std::collections::HashMap;
 
 /// Orchestrates the API client and the data flow in/out of MongoDB database
 pub struct Controller {
+    // TODO: become selective in loading Data
     /// Handles document manipulation for MongoDB
     db_client: MongoClient,
     /// Handles connection and requests to the vendo API
@@ -25,7 +26,9 @@ pub struct Controller {
     /// Unique stations in MongoDB (retrieved from Wikidata)
     stations: Stations,
     /// All [BahnProfile]s that are stored in MongoDB
-    profiles: Vec<BahnProfile>,
+    profiles: BahnProfiles,
+    /// Contains collection of [Journey] with travel information
+    journeys: Journeys,
 }
 
 impl Controller {
@@ -33,10 +36,11 @@ impl Controller {
     pub async fn try_new() -> Result<Self, ConnectionError> {
         let db_client = MongoClient::try_connect(MONGO_CONNECTION_STRING).await?;
         let vendo_socket = VendoSocket::try_from(VENDO_URI)?;
-        let stations = Stations::from(db_client.load::<Station>().await?);
+        let stations = db_client.load::<Stations>().await?;
         // TODO Potentially at some point we dont want to load everything anymore, but only some filtered data
-        let trips = Trips::from(db_client.load::<Trip>().await?);
-        let profiles = db_client.load::<BahnProfile>().await?;
+        let trips = db_client.load::<Trips>().await?;
+        let profiles = db_client.load::<BahnProfiles>().await?;
+        let journeys = db_client.load::<Journeys>().await?;
 
         Ok(Self {
             db_client,
@@ -44,25 +48,28 @@ impl Controller {
             trips,
             stations,
             profiles,
+            journeys,
         })
     }
 
-    pub async fn update_trips(&self) -> Result<(), ConnectionError> {
-        todo!()
-    }
-
-    /// Insert new user with [BahnProfile] to MongoDB
-    pub async fn insert_user<'a>(
-        &self,
-        user: &'a mut BahnProfile,
-    ) -> Result<&'a BahnProfile, ConnectionError> {
-        self.db_client.insert_user(user).await
-    }
-
-    /// Updates an existing trip if user parameters match, otherwise creates a new [Trip]
-    pub async fn update_trip(
+    /// maybe an Insert if doc not in DB?
+    /// Insert new profile with [BahnProfile] to MongoDB
+    pub async fn insert_user(
         &mut self,
-        user: &BahnProfile,
+        pending: PendingBahnProfile,
+    ) -> Result<String, ConnectionError> {
+        // TODO: verify if profile is maybe existing already in the in-memory collection
+        let user = self
+            .db_client
+            .persist_and_add(&mut self.profiles, pending)
+            .await?;
+        Ok(user.name().clone().to_owned())
+    }
+
+    /// Adds a new [Trip] to [Trips]
+    pub async fn add_trip(
+        &mut self,
+        user_name: &String,
         origin: &str,
         destination: &str,
         date: DateTime<FixedOffset>,
@@ -70,27 +77,42 @@ impl Controller {
         let origin = self.stations.try_get(origin)?.into();
         let destination = self.stations.try_get(destination)?.into();
 
-        let user_name = user.name().clone();
-        let mut trip = match self
+        if self
             .trips
-            .find(user_name.clone(), &origin, &destination, date)
+            .find(user_name, &origin, &destination, date)
+            .is_none()
         {
-            Some(trip) => trip,
-            None => self
-                .trips
-                .add(Trip::new(user_name, origin, destination, date)),
+            let pending = PendingTrip::new(user_name.clone(), origin, destination, date);
+            let _ = self
+                .db_client
+                .persist_and_add(&mut self.trips, pending)
+                .await?;
         };
-        let mut params = user.as_hashmap();
-        params.extend(trip.http_params());
-        let json = self.vendo_socket.request(params).await?;
-        let des_data: JsonRequest = serde_json::from_str(json.as_str())?;
-        let journeys = Journeys::from(des_data);
+        Ok(())
+    }
 
-        println!("{journeys:?}");
-        // Transform into Journey Data
-
-        // TODO: At the end we need to save the new trip/ update the old one
-
+    pub async fn update_trips(&mut self) -> Result<(), ConnectionError> {
+        for trip in self.trips.iter_mut() {
+            let Some(profile) = self.profiles.find(trip.user()) else {
+                panic!(
+                    "User profile with name `{}` does not exist in profiles {:?}",
+                    trip.user(),
+                    self.profiles
+                );
+            };
+            let mut params = profile.as_hashmap();
+            params.extend(trip.http_params());
+            let json = self.vendo_socket.request(params).await?;
+            let data: JsonRequest = serde_json::from_str(json.as_str())?;
+            let pendings: Vec<PendingJourney> = data.into();
+            for pending in pendings {
+                let summary: JourneySummary = pending.clone().into();
+                self.db_client
+                    .persist_and_add(&mut self.journeys, pending)
+                    .await?;
+                self.db_client.push_trip_summary(trip, summary).await?;
+            }
+        }
         Ok(())
     }
 }

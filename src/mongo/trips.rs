@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     bahn_profiles::BahnProfile,
-    client::{DocumentCollection, InsertPendingDocument},
+    client::{DocumentCollection, InsertPendingDocument, MongoDocument},
     journeys::JourneySummary,
     stations::{Station, StationIbnr},
 };
@@ -17,7 +17,7 @@ pub struct PendingTrip {
     date: DateTime<FixedOffset>,
     // The unique identifier name of a [BahnProfile]
     user: String,
-    journey_sum: Vec<JourneySummary>,
+    journey_summary: Vec<JourneySummary>,
 }
 
 ///
@@ -28,7 +28,7 @@ pub struct Trip {
     destination: StationIbnr,
     date: DateTime<FixedOffset>,
     user: String,
-    journey_sum: Vec<JourneySummary>,
+    journey_summary: Vec<JourneySummary>,
 }
 
 pub struct Trips(Vec<Trip>);
@@ -43,6 +43,13 @@ impl DocumentCollection for Trips {
     }
 }
 
+impl MongoDocument for Trip {
+    const COLLECTION: &'static str = "trips";
+    fn id(&self) -> &ObjectId {
+        &self.id
+    }
+}
+
 impl InsertPendingDocument for PendingTrip {
     const COLLECTION: &'static str = "trips";
     type Persisted = Trip;
@@ -54,7 +61,7 @@ impl InsertPendingDocument for PendingTrip {
             destination: self.destination,
             date: self.date,
             user: self.user,
-            journey_sum: self.journey_sum,
+            journey_summary: self.journey_summary,
         }
     }
 }
@@ -74,7 +81,7 @@ impl PendingTrip {
             destination,
             date,
             user,
-            journey_sum: Vec::new(),
+            journey_summary: Vec::new(),
         }
     }
 }
@@ -89,10 +96,14 @@ impl Trip {
         ])
     }
 
-    /// Update a the [JourneySummary] of a [Trip]
-    pub fn update(&mut self, trip: &Trip) {
-        // TODO Update the JourneySUmmary here:
-        todo!()
+    /// Insert a new [JourneySummary] to a [Trip]
+    pub fn add_summary(&mut self, summary: JourneySummary) {
+        self.journey_summary.push(summary);
+    }
+
+    /// Return the user name of a profile
+    pub fn user(&self) -> String {
+        self.user.clone()
     }
 }
 
@@ -101,17 +112,20 @@ impl Trips {
     pub fn new() -> Self {
         Self(Vec::new())
     }
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Trip> {
+        self.0.iter_mut()
+    }
 
     /// Finds an existing trip for specified parameters
-    pub fn find_mut(
-        &mut self,
-        user_name: String,
+    pub fn find(
+        &self,
+        user_name: &String,
         origin: &StationIbnr,
         destination: &StationIbnr,
         date: DateTime<FixedOffset>,
-    ) -> Option<&mut Trip> {
-        self.0.iter_mut().find(|trip| {
-            trip.user == user_name
+    ) -> Option<&Trip> {
+        self.0.iter().find(|trip| {
+            trip.user == *user_name
                 && trip.origin == *origin
                 && trip.destination == *destination
                 && trip.date == date

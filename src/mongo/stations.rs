@@ -12,7 +12,7 @@ use mongodb::{
 };
 use unidecode::unidecode;
 
-use super::client::DocumentCollection;
+use super::client::{DocumentCollection, MongoDocument};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fmt;
@@ -52,8 +52,14 @@ impl From<Vec<Station>> for Stations {
 
 impl DocumentCollection for Stations {
     type Document = Station;
-    fn add(&mut self, document: Self::Document) -> &mut Self::Document {
+    fn add(&mut self, _document: Self::Document) -> &mut Self::Document {
         panic!("It is not expected to insert new Stations!");
+    }
+}
+impl MongoDocument for Station {
+    const COLLECTION: &'static str = "stations";
+    fn id(&self) -> &ObjectId {
+        &self.id
     }
 }
 

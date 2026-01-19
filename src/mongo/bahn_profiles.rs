@@ -2,7 +2,7 @@
 
 //use crate::journey::Journey;
 use super::{
-    client::{DocumentCollection, InsertPendingDocument},
+    client::{DocumentCollection, InsertPendingDocument, MongoDocument},
     stations::Station,
 };
 use crate::errors::ConnectionError;
@@ -24,7 +24,7 @@ pub struct PendingBahnProfile {
     endpoint: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct BahnProfile {
     #[serde(rename = "_id")]
     id: ObjectId,
@@ -37,6 +37,7 @@ pub struct BahnProfile {
     endpoint: String,
 }
 
+#[derive(Debug)]
 pub struct BahnProfiles(Vec<BahnProfile>);
 
 impl From<Vec<BahnProfile>> for BahnProfiles {
@@ -55,7 +56,14 @@ impl DocumentCollection for BahnProfiles {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+impl MongoDocument for BahnProfile {
+    const COLLECTION: &'static str = "bahn_profiles";
+    fn id(&self) -> &ObjectId {
+        &self.id
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 /// Reduction cards supported by Deutsche Bahn
 pub enum LoyaltyCard {
     None,
@@ -143,6 +151,13 @@ impl BahnProfile {
             (String::from("loyaltyCard"), self.loyalty_card.to_string()),
             (String::from("profile"), self.endpoint.to_string()),
         ])
+    }
+}
+
+impl BahnProfiles {
+    /// Return a [BahnProfile] by its unique name
+    pub fn find(&self, name: String) -> Option<&BahnProfile> {
+        self.0.iter().find(|profile| profile.name == name)
     }
 }
 

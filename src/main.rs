@@ -1,6 +1,9 @@
 //! Client configuration to request and update trips and to sync with database.
 
-use crate::{domain::controller::Controller, mongo::bahn_profiles::BahnProfile};
+use crate::{
+    domain::controller::Controller,
+    mongo::bahn_profiles::{BahnProfile, PendingBahnProfile},
+};
 use chrono::{FixedOffset, Local};
 
 mod config;
@@ -32,7 +35,7 @@ async fn main() -> Result<(), errors::ConnectionError> {
     // -> return to Domain the new trips & updates
 
     // find user or create new one
-    let mut user = BahnProfile::new_with_options(
+    let pending = PendingBahnProfile::new_with_options(
         String::from("Knut"),
         Some(27),
         Some(true),
@@ -42,15 +45,20 @@ async fn main() -> Result<(), errors::ConnectionError> {
         None,
     )?;
 
-    let user = controller.insert_user(&mut user).await?;
+    let user_name = controller.insert_user(pending).await?;
 
     let origin = "Frankfurt (Main) Hbf";
     let destination = "Berlin Central Station";
     let date = Local::now().with_timezone(Local::now().offset());
 
+    //
     controller
-        .update_trip(user, origin, destination, date)
+        .add_trip(&user_name, origin, destination, date)
         .await?;
+
+    controller.update_trips().await?;
+
+    // UPdates: only Journey Summary, the rest should be fine,
 
     // Analyze newest tendencies
     //controller.analyze_trends();

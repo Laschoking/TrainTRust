@@ -1,6 +1,6 @@
 //! Represents the core journeys, that can be deserialized from MongoDB or Http GET requests
 
-use super::client::{DocumentCollection, InsertPendingDocument};
+use super::client::{DocumentCollection, InsertPendingDocument, MongoDocument};
 use crate::vendo::journeys::{JsonJourney, JsonLeg, JsonRequest};
 use chrono::Duration;
 use chrono::format::Fixed;
@@ -14,23 +14,8 @@ use std::collections::{HashMap, HashSet};
 #[derive(Debug)]
 pub struct Journeys(Vec<Journey>);
 
-impl Journeys {
-    pub fn new(journeys: Vec<Journey>) -> Self {
-        Self(journeys)
-    }
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Journey {
-    id: ObjectId,
-    legs: Vec<Leg>,
-    refresh_token: String,
-    departure: DateTime<FixedOffset>,
-    duration: Duration,
-    prices: HashMap<DateTime<FixedOffset>, f32>,
-}
 /// This will serve as Serialization & Deserialization for MongoDB trips
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct PendingJourney {
     legs: Vec<Leg>,
     refresh_token: String,
@@ -41,6 +26,36 @@ pub struct PendingJourney {
     // Leave Price, origin, destination out bc. they will be in the TripRecords
 }
 
+#[derive(Debug, Deserialize)]
+pub struct Journey {
+    id: ObjectId,
+    legs: Vec<Leg>,
+    refresh_token: String,
+    departure: DateTime<FixedOffset>,
+    duration: Duration,
+}
+
+/// A summary of the most important aspects of a journey
+#[derive(Serialize, Deserialize, Clone)]
+pub struct JourneySummary {
+    refresh_token: String,
+    departure: DateTime<FixedOffset>,
+    duration: Duration,
+    prices: HashMap<DateTime<FixedOffset>, f32>,
+}
+
+impl From<Vec<Journey>> for Journeys {
+    fn from(journeys: Vec<Journey>) -> Self {
+        Self(journeys)
+    }
+}
+
+impl Journeys {
+    pub fn new(journeys: Vec<Journey>) -> Self {
+        Self(journeys)
+    }
+}
+
 impl DocumentCollection for Journeys {
     type Document = Journey;
     fn add(&mut self, document: Self::Document) -> &mut Self::Document {
@@ -48,6 +63,13 @@ impl DocumentCollection for Journeys {
         self.0
             .last_mut()
             .expect("At least one value is in collection")
+    }
+}
+
+impl MongoDocument for Journey {
+    const COLLECTION: &'static str = "journey";
+    fn id(&self) -> &ObjectId {
+        &self.id
     }
 }
 
@@ -63,7 +85,6 @@ impl InsertPendingDocument for PendingJourney {
             refresh_token: self.refresh_token,
             departure: self.departure,
             duration: self.duration,
-            prices: self.prices,
         }
     }
 }
@@ -87,9 +108,8 @@ impl PendingJourney {
 }
 
 /// Contains the same parameters as the vendo struct, but flattens the JSON structure
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Leg {
-    // TODO: evaluate if it is better to introduce a new() function and reduce visibility
     origin: u32,
     destination: u32,
     departure: DateTime<FixedOffset>,
@@ -115,27 +135,13 @@ impl Leg {
     }
 }
 
-/// A summary of the most important aspects of a journey
-#[derive(Serialize, Deserialize)]
-pub struct JourneySummary {
-    refresh_token: String,
-    departure: DateTime<FixedOffset>,
-    duration: Duration,
-    prices: HashMap<DateTime<FixedOffset>, u32>,
-}
-
-impl JourneySummary {
-    pub fn new(
-        refresh_token: String,
-        departure: DateTime<FixedOffset>,
-        duration: Duration,
-        prices: HashMap<DateTime<FixedOffset>, u32>,
-    ) -> Self {
+impl From<PendingJourney> for JourneySummary {
+    fn from(pending: PendingJourney) -> Self {
         Self {
-            refresh_token,
-            departure,
-            duration,
-            prices,
+            refresh_token: pending.refresh_token,
+            departure: pending.departure,
+            duration: pending.duration,
+            prices: pending.prices,
         }
     }
 }

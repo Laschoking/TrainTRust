@@ -1,3 +1,4 @@
+use mongodb::bson;
 //use mongodb::error::Error;
 use thiserror::Error;
 use tokio::task::JoinError;
@@ -35,4 +36,7 @@ pub enum ConnectionError {
     /// Error when an invalid string was given as Bahncard
     #[error("Invalid Bahncard  specified:`{0:?}` options are `{1:?}`")]
     InvalidBahnCard(String, String),
+    /// Error when serializing an object into Bson
+    #[error(transparent)]
+    BsonSerializaionError(#[from] bson::ser::Error),
 }
