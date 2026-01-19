@@ -1,13 +1,11 @@
 //! Represents the core journeys, that can be deserialized from MongoDB or Http GET requests
 
 use super::client::{DocumentCollection, InsertPendingDocument, MongoDocument};
-use crate::vendo::journeys::{JsonJourney, JsonLeg, JsonRequest};
 use chrono::Duration;
-use chrono::format::Fixed;
-use chrono::{DateTime, FixedOffset, Local, TimeDelta};
+use chrono::{DateTime, FixedOffset};
 use mongodb::bson::oid::ObjectId;
-use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::collections::HashMap;
 
 ///
 ///
@@ -28,6 +26,7 @@ pub struct PendingJourney {
 
 #[derive(Debug, Deserialize)]
 pub struct Journey {
+    #[serde(rename = "_id")]
     id: ObjectId,
     legs: Vec<Leg>,
     refresh_token: String,
@@ -40,8 +39,36 @@ pub struct Journey {
 pub struct JourneySummary {
     refresh_token: String,
     departure: DateTime<FixedOffset>,
+    #[serde(with = "duration_serde")]
     duration: Duration,
     prices: HashMap<DateTime<FixedOffset>, f32>,
+}
+
+pub mod duration_serde {
+    use super::*;
+    /// Deserialize a duration into
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Duration, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s: String = Deserialize::deserialize(deserializer)?;
+        let parts: Vec<&str> = s.split(':').collect();
+        if parts.len() != 2 {
+            return Err(serde::de::Error::custom("Invalid duration format"));
+        }
+        let hours: i64 = parts[0].parse().map_err(serde::de::Error::custom)?;
+        let minutes: i64 = parts[1].parse().map_err(serde::de::Error::custom)?;
+        Ok(Duration::minutes(hours * 60 + minutes))
+    }
+
+    pub fn serialize<S>(duration: &Duration, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let hours = duration.num_hours();
+        let minutes = duration.num_minutes() % 60;
+        serializer.serialize_str(&format!("{:02}:{:02}", hours, minutes))
+    }
 }
 
 impl From<Vec<Journey>> for Journeys {

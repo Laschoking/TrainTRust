@@ -1,10 +1,9 @@
 use serde::{Deserialize, Serialize};
 
 use super::{
-    bahn_profiles::BahnProfile,
     client::{DocumentCollection, InsertPendingDocument, MongoDocument},
     journeys::JourneySummary,
-    stations::{Station, StationIbnr},
+    stations::StationIbnr,
 };
 use chrono::{DateTime, FixedOffset};
 use mongodb::bson::oid::ObjectId;
@@ -23,6 +22,7 @@ pub struct PendingTrip {
 ///
 #[derive(Deserialize)]
 pub struct Trip {
+    #[serde(rename = "_id")]
     id: ObjectId,
     origin: StationIbnr,
     destination: StationIbnr,

@@ -3,7 +3,7 @@ use mongodb::bson;
 use thiserror::Error;
 use tokio::task::JoinError;
 
-use crate::{mongo::bahn_profiles::LoyaltyCard, vendo::client::VendoError};
+use crate::vendo::client::VendoError;
 
 #[derive(Error, Debug)]
 pub enum ConnectionError {

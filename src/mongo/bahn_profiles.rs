@@ -1,14 +1,11 @@
 //! Profiles for Deutsche Bahn to collect parameters for Http GET request
 
 //use crate::journey::Journey;
-use super::{
-    client::{DocumentCollection, InsertPendingDocument, MongoDocument},
-    stations::Station,
-};
+use super::client::{DocumentCollection, InsertPendingDocument, MongoDocument};
 use crate::errors::ConnectionError;
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 

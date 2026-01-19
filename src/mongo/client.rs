@@ -1,24 +1,18 @@
 //! Provide connection to MongoDB and document manipulation options.
 use super::{
-    bahn_profiles::{BahnProfile, BahnProfiles, PendingBahnProfile},
-    journeys::{Journey, JourneySummary, Journeys, PendingJourney},
-    stations::{Station, Stations},
-    trips::{PendingTrip, Trip, Trips},
+    journeys::JourneySummary,
+    trips::Trip,
 };
 /// TODO: Maybe the implementation of IO should be handled by the MongoClient
 use crate::errors::ConnectionError;
 use futures::TryStreamExt;
 use mongodb::{
-    Client, Collection, Database,
-    bson::{Bson, Document, doc, oid::ObjectId},
-    results::InsertOneResult,
+    Database,
+    bson::{doc, oid::ObjectId},
 };
 use serde::{Deserialize, Serialize};
 
-use std::collections::HashSet;
-use std::sync::Arc;
 use tokio::net::TcpStream;
-use unidecode::unidecode;
 use url::Url;
 
 pub struct MongoClient {

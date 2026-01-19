@@ -1,9 +1,7 @@
-use crate::errors::ConnectionError;
 use http::StatusCode;
-use reqwest::{Client, Response};
-use std::{collections::HashMap, fs};
+use reqwest::Client;
+use std::fs;
 use thiserror::Error;
-use tokio::{io::BufReader, net::TcpStream};
 use url::{ParseError, Url};
 
 #[derive(Error, Debug)]
@@ -62,6 +60,7 @@ impl VendoSocket {
 mod tests {
     use super::*;
     use crate::config::VENDO_URI;
+    use std::collections::HashMap;
     use std::iter;
 
     #[tokio::test]

@@ -1,12 +1,7 @@
 //! Deserialize a GET response from the Vendo endpoint
-use crate::mongo::journeys::{JourneySummary, Journeys, Leg, PendingJourney};
-use chrono::{DateTime, FixedOffset, Local, TimeDelta, Utc};
-use futures::stream::{StreamExt, TryStreamExt};
-use mongodb::{
-    Client, Collection, Database,
-    bson::{doc, oid::ObjectId},
-    options::FindOptions,
-};
+use crate::mongo::journeys::{Leg, PendingJourney};
+use chrono::{DateTime, FixedOffset, Local};
+use mongodb::bson::doc;
 use serde::Deserialize;
 use serde_aux::prelude::*;
 use std::collections::HashMap;

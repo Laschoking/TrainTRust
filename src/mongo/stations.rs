@@ -3,13 +3,9 @@
 /// Stations come from a MongoDB collection, so their implementation should be located under db_client/
 /// It is questionable, if the fuzzy matching should be here though, since its rather algorithmic and not IO
 use crate::errors::ConnectionError;
-use futures::stream::{StreamExt, TryStreamExt};
 
 use fuzzy_match::fuzzy_match;
-use mongodb::{
-    Database,
-    bson::{doc, oid::ObjectId},
-};
+use mongodb::bson::{doc, oid::ObjectId};
 use unidecode::unidecode;
 
 use super::client::{DocumentCollection, MongoDocument};

@@ -2,17 +2,15 @@ use crate::{
     config::{MONGO_CONNECTION_STRING, VENDO_URI},
     errors::ConnectionError,
     mongo::{
-        bahn_profiles::{BahnProfile, BahnProfiles, PendingBahnProfile},
+        bahn_profiles::{BahnProfiles, PendingBahnProfile},
         client::MongoClient,
-        journeys::{Journey, JourneySummary, Journeys, PendingJourney},
-        stations::{Station, StationIbnr, Stations},
-        trips::{PendingTrip, Trip, Trips},
+        journeys::{JourneySummary, Journeys, PendingJourney},
+        stations::Stations,
+        trips::{PendingTrip, Trips},
     },
     vendo::{client::VendoSocket, journeys::JsonRequest},
 };
-use chrono::{DateTime, FixedOffset, NaiveDateTime};
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use chrono::{DateTime, FixedOffset};
 
 /// Orchestrates the API client and the data flow in/out of MongoDB database
 pub struct Controller {
